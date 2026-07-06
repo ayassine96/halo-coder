@@ -1,0 +1,35 @@
+FROM halo-devpod:latest
+
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends nginx-light \
+    && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /var/lib/nginx /var/log/nginx /var/run && chown -R coder:coder /var/lib/nginx /var/log/nginx /var/run
+RUN pip3 install --break-system-packages pyyaml attrs
+
+RUN mkdir -p /tmp/browser/memory /home/dev/.claude-memory/memory /home/dev/.claude-tasks \
+    && chown -R coder:coder /tmp/browser /home/dev
+
+COPY charts/workspace/server.py /tmp/browser/
+COPY charts/workspace/mcp_agent_orchestrator.py /tmp/browser/
+COPY charts/workspace/mcp_memory.py /tmp/browser/
+COPY charts/workspace/memory_inject_hook.py /tmp/browser/
+COPY charts/workspace/seed_claude_config.py /tmp/browser/
+COPY charts/workspace/seed_demo.py /tmp/browser/
+COPY charts/workspace/harness.py /tmp/browser/
+COPY charts/workspace/playwright_reaper.py /tmp/browser/
+COPY charts/workspace/memory/ /tmp/browser/memory/
+COPY charts/workspace/halo_coder/ /tmp/browser/halo_coder/
+COPY charts/workspace/web/dist/ /opt/dashboard-dist/
+COPY devlaptop/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh && chown -R coder:coder /tmp/browser /home/dev /opt/dashboard-dist
+
+USER coder
+ENV PYTHONPATH=/tmp/browser
+ENV AUTH_MODE=basic
+ENV READONLY_MODE=false
+ENV DASHBOARD_DIST_DIR=/opt/dashboard-dist
+ENV HOME=/home/dev
+
+EXPOSE 80
+
+ENTRYPOINT ["/entrypoint.sh"]

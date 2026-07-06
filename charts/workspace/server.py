@@ -3414,6 +3414,9 @@ class BrowserHandler(http.server.SimpleHTTPRequestHandler):
             # SPA at root. /dashboard and /browser kept for back-compat URLs.
             self.serve_next_spa('/')
             return
+        elif self.path.startswith("/oauth2/start"):
+            self.send_oauth2_start()
+            return
         elif self.path == "/livez":
             self.send_livez()
             return
@@ -6608,6 +6611,20 @@ class BrowserHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body.encode())
     
+    def send_oauth2_start(self):
+        """Redirect oauth2/start back to root when not in oauth2 mode.
+
+        The SPA client may redirect to /oauth2/start when it detects auth
+        errors. In basic / none auth modes there is no oauth2-proxy behind
+        this path, so we bounce to / to avoid a 404 loop.
+        """
+        rd = urllib.parse.parse_qs(
+            urllib.parse.urlparse(self.path).query
+        ).get('rd', ['/'])[0]
+        self.send_response(302)
+        self.send_header('Location', rd if rd.startswith('/') else '/')
+        self.end_headers()
+
     def send_livez(self):
         """Liveness probe — proves the HTTP server thread is alive and can
         answer, nothing more. Deliberately does ZERO blocking work: no socket
