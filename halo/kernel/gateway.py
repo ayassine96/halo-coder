@@ -1,27 +1,33 @@
 #!/usr/bin/env python3
-"""HALO Kernel — OpenAI-compatible vLLM inference gateway with admission control.
+"""HALO Kernel — OpenAI-compatible LLM inference gateway with admission control.
 
 Implements SRS HK-R1..HK-R5:
-- Gateway on :13305
-- Three model profiles (halo-fast, halo-reasoning, halo-vision)
+- Gateway on :13306 (avoids Lemonade on :13305)
+- Model profiles mapped to Lemonade backend models (halo-fast, halo-reasoning, halo-coder, halo-vision)
 - Admission control: HTTP 202 + Retry-After when max-num-seqs exceeded (HK-R3)
-- /health endpoint (HK-R1, REL-1)
+- /health endpoint (HK-R1, REL-1) with backend liveness check
 - /metrics endpoint for Prometheus (HK-R5)
+- Real proxy to Lemonade via httpx (A10)
 """
 
+import os
 import asyncio
 import json
 import time
 from collections import defaultdict
 
+import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
-from halo.common.config import HaloConfig
 from halo.kernel.vllm_config import MODEL_PROFILES, VRAM_SOFT_LIMIT_GB
 
 
 app = FastAPI(title="HALO Kernel Gateway", version="2.0.0-halo")
+
+BACKEND_URL = os.environ.get("HALO_KERNEL_BACKEND_URL", "http://localhost:13305")
+BACKEND_API_KEY = os.environ.get("HALO_KERNEL_API_KEY", "halo-local")
+BACKEND_TIMEOUT = int(os.environ.get("HALO_KERNEL_BACKEND_TIMEOUT", "120"))
 
 _metrics = defaultdict(float)
 _metrics["start_time"] = time.time()
@@ -30,7 +36,26 @@ _admission_queue = {}
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "models": list(MODEL_PROFILES.keys())}
+    backend_ok = await _check_backend()
+    return {
+        "status": "ok" if backend_ok else "degraded",
+        "backend_url": BACKEND_URL,
+        "backend_reachable": backend_ok,
+        "models": list(MODEL_PROFILES.keys()),
+    }
+
+
+async def _check_backend():
+    """Check if LLM backend is reachable."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(
+                f"{BACKEND_URL}/v1/models",
+                headers={"Authorization": f"Bearer {BACKEND_API_KEY}"},
+            )
+            return resp.status_code == 200
+    except Exception:
+        return False
 
 
 @app.get("/v1/models")
@@ -95,10 +120,22 @@ async def chat_completions(request: Request):
 
     _metrics["active_seqs"] += 1
     try:
-        result = await _forward_to_vllm(body)
-        if "usage" in result:
+        result = await _forward_to_backend(body, "chat/completions")
+        if isinstance(result, dict) and "usage" in result:
             _metrics["tokens_total"] += result["usage"].get("completion_tokens", 0)
         return result
+    except httpx.ConnectError:
+        return JSONResponse(
+            status_code=503,
+            content={"error": {"message": "LLM backend unavailable", "type": "backend_error"}},
+            headers={"Retry-After": "10"},
+        )
+    except httpx.TimeoutException:
+        return JSONResponse(
+            status_code=504,
+            content={"error": {"message": "LLM backend timeout", "type": "backend_error"}},
+            headers={"Retry-After": "15"},
+        )
     finally:
         _metrics["active_seqs"] -= 1
 
@@ -116,25 +153,55 @@ async def completions(request: Request):
             content={"error": {"message": f"Unknown model: {model}", "type": "invalid_request_error"}},
         )
 
-    return await _forward_to_vllm(body)
+    _metrics["active_seqs"] += 1
+    try:
+        return await _forward_to_backend(body, "completions")
+    except httpx.ConnectError:
+        return JSONResponse(
+            status_code=503,
+            content={"error": {"message": "LLM backend unavailable", "type": "backend_error"}},
+            headers={"Retry-After": "10"},
+        )
+    except httpx.TimeoutException:
+        return JSONResponse(
+            status_code=504,
+            content={"error": {"message": "LLM backend timeout", "type": "backend_error"}},
+            headers={"Retry-After": "15"},
+        )
+    finally:
+        _metrics["active_seqs"] -= 1
 
 
-async def _forward_to_vllm(body):
-    """Forward request to vLLM backend. Simulated for tests."""
-    await asyncio.sleep(0.001)
-    return {
-        "id": "halo-cmpl-mock",
-        "object": "chat.completion",
-        "model": body.get("model", "halo-reasoning"),
-        "choices": [{
-            "index": 0,
-            "message": {"role": "assistant", "content": "[HALO Kernel placeholder response]"},
-            "finish_reason": "stop",
-        }],
-        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+def _resolve_model(body):
+    """Translate HALO profile name to backend model ID."""
+    model = body.get("model", "halo-reasoning")
+    if model in MODEL_PROFILES:
+        body = dict(body)
+        body["model"] = MODEL_PROFILES[model]["backend_model"]
+    return body
+
+
+async def _forward_to_backend(body, endpoint):
+    """Forward request to LLM backend (Lemonade) via httpx (A10)."""
+    translated = _resolve_model(body)
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {BACKEND_API_KEY}",
     }
+    async with httpx.AsyncClient(timeout=BACKEND_TIMEOUT) as client:
+        resp = await client.post(
+            f"{BACKEND_URL}/v1/{endpoint}",
+            json=translated,
+            headers=headers,
+        )
+    if resp.status_code != 200:
+        return JSONResponse(
+            status_code=resp.status_code,
+            content=resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"error": resp.text},
+        )
+    return resp.json()
 
 
 if __name__ == "__main__":
-    import os, uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("HALO_KERNEL_PORT", "13305")))
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("HALO_KERNEL_PORT", "13306")))

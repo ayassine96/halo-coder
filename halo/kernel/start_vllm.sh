@@ -1,21 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# HALO Kernel startup script
+# Pass 2: starts the HALO Kernel gateway which proxies to Lemonade (:13305)
+# Future: can be switched to vLLM by setting HALO_KERNEL_BACKEND_URL
+
 export HSA_OVERRIDE_GFX_VERSION=11.5.1
 export PYTORCH_ROCM_ARCH=gfx1151
 export FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE
 export ROCBLAS_USE_HIPBLASLT=1
 export VGM_MODE=High
 
-PROFILE="${HALO_MODEL_PROFILE:-halo-reasoning}"
+export HALO_KERNEL_BACKEND_URL="${HALO_KERNEL_BACKEND_URL:-http://localhost:13305}"
+export HALO_KERNEL_API_KEY="${HALO_KERNEL_API_KEY:-halo-local}"
+export HALO_KERNEL_PORT="${HALO_KERNEL_PORT:-13306}"
 
-echo "Starting vLLM server with profile: $PROFILE"
+echo "Starting HALO Kernel gateway on :${HALO_KERNEL_PORT}"
+echo "  Backend: ${HALO_KERNEL_BACKEND_URL}"
 
-exec python3 -m vllm.entrypoints.openai.api_server \
-  --model "$(python3 -c "from halo.kernel.vllm_config import MODEL_PROFILES; print(MODEL_PROFILES['$PROFILE']['model'])")" \
-  --quantization "$(python3 -c "from halo.kernel.vllm_config import MODEL_PROFILES; print(MODEL_PROFILES['$PROFILE']['quantization'])")" \
-  --max-num-seqs "$(python3 -c "from halo.kernel.vllm_config import MODEL_PROFILES; print(MODEL_PROFILES['$PROFILE']['max_num_seqs'])")" \
-  --gpu-memory-utilization "$(python3 -c "from halo.kernel.vllm_config import MODEL_PROFILES; print(MODEL_PROFILES['$PROFILE']['gpu_memory_utilization'])")" \
-  --dtype float16 \
+# Health check: verify Lemonade is running before starting
+echo "Checking LLM backend at ${HALO_KERNEL_BACKEND_URL}..."
+if curl -sf "${HALO_KERNEL_BACKEND_URL}/v1/models" -H "Authorization: Bearer ${HALO_KERNEL_API_KEY}" >/dev/null 2>&1; then
+    echo "  Backend OK — models available"
+else
+    echo "  WARNING: Backend not reachable. Gateway will return 503 on requests."
+fi
+
+exec python3 -m uvicorn halo.kernel.gateway:app \
   --host 0.0.0.0 \
-  --port 13305
+  --port "${HALO_KERNEL_PORT}"

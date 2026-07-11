@@ -1,13 +1,17 @@
 [Unit]
-Description=HALO Kernel — vLLM Inference Gateway
+Description=HALO Kernel — LLM Inference Gateway (Lemonade proxy)
 After=network.target
 
 [Service]
 Type=simple
 ExecStart=/opt/halo/kernel/start_vllm.sh
 Restart=on-failure
-RestartSecBurstStart=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
 RestartSec=5
+Environment=HALO_KERNEL_BACKEND_URL=http://localhost:13305
+Environment=HALO_KERNEL_API_KEY=halo-local
+Environment=HALO_KERNEL_PORT=13306
 Environment=HSA_OVERRIDE_GFX_VERSION=11.5.1
 Environment=PYTORCH_ROCM_ARCH=gfx1151
 Environment=FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE
