@@ -17,11 +17,20 @@ import asyncio
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 from halo.common.config import HaloConfig
 
 
 app = FastAPI(title="HALO Agent-Bridge", version="2.0.0-halo")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _config = HaloConfig.from_env()
 _project_dir = os.environ.get("HALO_PROJECT_DIR", _config.projects_dir)

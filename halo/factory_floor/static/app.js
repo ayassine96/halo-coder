@@ -1,4 +1,11 @@
 // HALO Factory Floor — main app controller
+import { renderKanban } from './kanban.js';
+import { renderDevPods } from './devpods.js';
+import { renderModels } from './models.js';
+import { renderGraph } from './graph.js';
+import { appendLog } from './logs.js';
+import { addApprovalCard } from './approvals.js';
+
 const API_BASE = '';
 let csrfToken = '';
 let paused = false;

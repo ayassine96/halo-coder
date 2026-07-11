@@ -22,6 +22,7 @@ import secrets
 import time
 
 from fastapi import FastAPI, Request, Response, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 import httpx
@@ -38,6 +39,14 @@ from halo.specs.parser import parse_specs_dir
 KERNEL_URL = os.environ.get("HALO_KERNEL_URL", "http://localhost:13306")
 
 app = FastAPI(title="HALO Supervisor API", version="2.0.0-halo")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _csrf_tokens = set()
 
@@ -298,7 +307,13 @@ async def pause_supervisor(req: PauseReq):
 
 @app.get("/api/sse")
 async def sse_stream():
-    """SSE relay of Redis Pub/Sub events (FF-R3, FF-NF1)."""
+    """SSE relay of Redis Pub/Sub events (FF-R3, FF-NF1).
+
+    Uses asyncio.to_thread to run blocking Redis pubsub.listen() in a
+    thread pool, so the event loop stays responsive for other requests.
+    """
+    import queue as _q
+
     async def generate():
         yield f"data: {json.dumps({'type': 'connected'})}\n\n"
 
@@ -306,24 +321,42 @@ async def sse_stream():
         redis_port = int(os.environ.get("HALO_REDIS_PORT", "6379"))
         channels = [CHANNEL_LOGS, CHANNEL_APPROVALS, CHANNEL_ALERTS, CHANNEL_METRICS]
 
-        try:
-            import redis
-            r = redis.Redis(host=redis_host, port=redis_port)
-            pubsub = r.pubsub()
-            for ch in channels:
-                pubsub.subscribe(ch)
+        msg_queue = _q.Queue()
 
-            for msg in pubsub.listen():
-                if msg["type"] == "message":
-                    data = msg["data"]
-                    if isinstance(data, bytes):
-                        data = data.decode()
+        def redis_listener():
+            try:
+                import redis as redis_mod
+                r = redis_mod.Redis(host=redis_host, port=redis_port, socket_timeout=1)
+                pubsub = r.pubsub()
+                for ch in channels:
+                    pubsub.subscribe(ch)
+                for msg in pubsub.listen():
+                    if msg["type"] == "message":
+                        data = msg["data"]
+                        if isinstance(data, bytes):
+                            data = data.decode()
+                        msg_queue.put(("message", data))
+            except Exception as e:
+                msg_queue.put(("error", str(e)))
+
+        import threading
+        thread = threading.Thread(target=redis_listener, daemon=True)
+        thread.start()
+
+        heartbeat_count = 0
+        while True:
+            try:
+                kind, data = await asyncio.to_thread(msg_queue.get, True, 1)
+                if kind == "message":
                     yield f"data: {data}\n\n"
-        except Exception:
-            import time
-            while True:
-                await asyncio.sleep(30)
-                yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+                elif kind == "error":
+                    yield f"data: {json.dumps({'type': 'error', 'detail': data})}\n\n"
+                    break
+            except _q.Empty:
+                heartbeat_count += 1
+                if heartbeat_count >= 30:
+                    heartbeat_count = 0
+                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
