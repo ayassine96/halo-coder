@@ -136,5 +136,5 @@ async def _forward_to_vllm(body):
 
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=13305)
+    import os, uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("HALO_KERNEL_PORT", "13305")))

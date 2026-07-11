@@ -114,4 +114,4 @@ async def index_repo(req: IndexRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8402)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("HALO_TDAD_PORT", "8402")))

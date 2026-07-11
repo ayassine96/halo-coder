@@ -5,10 +5,10 @@ Usage:
   python3 scripts/halo-test.py <command>
 
 Commands:
-  start-kernel      Start the HALO Kernel gateway (:13305)
-  start-tdad        Start the TDAD service (:8402)
-  start-floor       Start the Factory Floor dashboard (:8888)
-  start-bridge      Start the Agent-Bridge (:9000)
+  start-kernel      Start the HALO Kernel gateway
+  start-tdad        Start the TDAD service
+  start-floor       Start the Factory Floor dashboard
+  start-bridge      Start the Agent-Bridge
   start-nanoclaw    Start the Nanoclaw socket service
   start-supervisor  Start the Supervisor (polls for specs)
   create-spec       Create a sample spec file in /tmp/halo-test
@@ -17,6 +17,17 @@ Commands:
   test-floor        Test Factory Floor endpoints
   test-bridge       Test Agent-Bridge endpoints
   test-all          Run all API smoke tests
+
+Environment variables (override defaults):
+  HALO_KERNEL_PORT           Default: 13306  (13305 is used by Lemonade on Strix Halo)
+  HALO_TDAD_PORT              Default: 8402
+  HALO_FACTORY_FLOOR_PORT    Default: 8888
+  HALO_AGENT_BRIDGE_PORT     Default: 19000  (9000 is commonly occupied)
+  HALO_NANOCLAW_SOCK         Default: /tmp/nanoclaw.sock
+
+Note: On Strix Halo systems, Lemonade occupies :13305 and other services
+may use :9000. This script defaults to non-conflicting ports for local testing.
+In production, use the SRS-specified ports.
 """
 import sys
 import os
@@ -30,6 +41,11 @@ PROJECTS_DIR = f"{WORKDIR}/projects"
 DEMO_PROJECT = f"{PROJECTS_DIR}/demo"
 SPECS_DIR = f"{DEMO_PROJECT}/specs"
 
+KERNEL_PORT = os.environ.get("HALO_KERNEL_PORT", "13306")
+TDAD_PORT = os.environ.get("HALO_TDAD_PORT", "8402")
+FLOOR_PORT = os.environ.get("HALO_FACTORY_FLOOR_PORT", "8888")
+BRIDGE_PORT = os.environ.get("HALO_AGENT_BRIDGE_PORT", "19000")
+
 
 def ensure_dirs():
     os.makedirs(SPECS_DIR, exist_ok=True)
@@ -37,33 +53,37 @@ def ensure_dirs():
 
 
 def cmd_start_kernel():
-    print("Starting HALO Kernel gateway on :13305 ...")
+    print(f"Starting HALO Kernel gateway on :{KERNEL_PORT} ...")
+    os.environ["HALO_KERNEL_PORT"] = KERNEL_PORT
     subprocess.run([sys.executable, "-m", "uvicorn",
-                    "halo.kernel.gateway:app", "--host", "0.0.0.0", "--port", "13305"])
+                    "halo.kernel.gateway:app", "--host", "0.0.0.0", "--port", KERNEL_PORT])
 
 
 def cmd_start_tdad():
-    print("Starting TDAD service on :8402 ...")
+    print(f"Starting TDAD service on :{TDAD_PORT} ...")
+    os.environ["HALO_TDAD_PORT"] = TDAD_PORT
     subprocess.run([sys.executable, "-m", "uvicorn",
-                    "halo.tdad.app:app", "--host", "0.0.0.0", "--port", "8402"])
+                    "halo.tdad.app:app", "--host", "0.0.0.0", "--port", TDAD_PORT])
 
 
 def cmd_start_floor():
-    print("Starting Factory Floor on :8888 ...")
+    print(f"Starting Factory Floor on :{FLOOR_PORT} ...")
+    os.environ["HALO_FACTORY_FLOOR_PORT"] = FLOOR_PORT
     subprocess.run([sys.executable, "-m", "uvicorn",
-                    "halo.factory_floor.app:app", "--host", "0.0.0.0", "--port", "8888"])
+                    "halo.factory_floor.app:app", "--host", "0.0.0.0", "--port", FLOOR_PORT])
 
 
 def cmd_start_bridge():
-    print("Starting Agent-Bridge on :9000 ...")
+    print(f"Starting Agent-Bridge on :{BRIDGE_PORT} ...")
     os.environ.setdefault("HALO_PROJECT_DIR", DEMO_PROJECT)
+    os.environ["HALO_AGENT_BRIDGE_PORT"] = BRIDGE_PORT
     subprocess.run([sys.executable, "-m", "uvicorn",
-                    "halo.agent_bridge.app:app", "--host", "0.0.0.0", "--port", "9000"])
+                    "halo.agent_bridge.app:app", "--host", "0.0.0.0", "--port", BRIDGE_PORT])
 
 
 def cmd_start_nanoclaw():
     print("Starting Nanoclaw socket service ...")
-    os.environ.setdefault("HALO_KERNEL_URL", "http://localhost:13305")
+    os.environ.setdefault("HALO_KERNEL_URL", f"http://localhost:{KERNEL_PORT}")
     subprocess.run([sys.executable, "-m", "halo.nanoclaw.server"])
 
 
@@ -154,22 +174,24 @@ def test_root():
 
 def cmd_test_kernel():
     import urllib.request
-    print("Testing HALO Kernel (http://localhost:13305) ...")
+    base = f"http://localhost:{KERNEL_PORT}"
+    print(f"Testing HALO Kernel ({base}) ...")
     try:
-        resp = urllib.request.urlopen("http://localhost:13305/health")
+        resp = urllib.request.urlopen(f"{base}/health")
         data = json.loads(resp.read())
         print(f"  /health: {data}")
     except Exception as e:
         print(f"  /health FAILED: {e}")
+        print(f"  (Is the Kernel running? Start it with: python3 scripts/halo-test.py start-kernel)")
         return
     try:
-        resp = urllib.request.urlopen("http://localhost:13305/v1/models")
+        resp = urllib.request.urlopen(f"{base}/v1/models")
         data = json.loads(resp.read())
         print(f"  /v1/models: {[m['id'] for m in data['data']]}")
     except Exception as e:
         print(f"  /v1/models FAILED: {e}")
     body = json.dumps({"model": "halo-fast", "messages": [{"role": "user", "content": "hello"}]}).encode()
-    req = urllib.request.Request("http://localhost:13305/v1/chat/completions",
+    req = urllib.request.Request(f"{base}/v1/chat/completions",
                                  data=body, headers={"Content-Type": "application/json"})
     try:
         resp = urllib.request.urlopen(req)
@@ -178,7 +200,7 @@ def cmd_test_kernel():
     except Exception as e:
         print(f"  /v1/chat/completions FAILED: {e}")
     try:
-        resp = urllib.request.urlopen("http://localhost:13305/metrics")
+        resp = urllib.request.urlopen(f"{base}/metrics")
         print(f"  /metrics (first line): {resp.read().decode().strip().split(chr(10))[0]}")
     except Exception as e:
         print(f"  /metrics FAILED: {e}")
@@ -186,17 +208,19 @@ def cmd_test_kernel():
 
 def cmd_test_tdad():
     import urllib.request
-    print("Testing TDAD (http://localhost:8402) ...")
+    base = f"http://localhost:{TDAD_PORT}"
+    print(f"Testing TDAD ({base}) ...")
     try:
-        resp = urllib.request.urlopen("http://localhost:8402/health")
+        resp = urllib.request.urlopen(f"{base}/health")
         data = json.loads(resp.read())
         print(f"  /health: {data}")
     except Exception as e:
         print(f"  /health FAILED: {e}")
+        print(f"  (Is TDAD running? Start it with: python3 scripts/halo-test.py start-tdad)")
         return
     ensure_dirs()
     body = json.dumps({"repo": DEMO_PROJECT, "changed_files": ["src/app.py"], "spec_id": "SPEC-001"}).encode()
-    req = urllib.request.Request("http://localhost:8402/analyze",
+    req = urllib.request.Request(f"{base}/analyze",
                                  data=body, headers={"Content-Type": "application/json"})
     try:
         resp = urllib.request.urlopen(req)
@@ -205,7 +229,7 @@ def cmd_test_tdad():
     except Exception as e:
         print(f"  /analyze FAILED: {e}")
     try:
-        resp = urllib.request.urlopen("http://localhost:8402/metrics")
+        resp = urllib.request.urlopen(f"{base}/metrics")
         print(f"  /metrics (first line): {resp.read().decode().strip().split(chr(10))[0]}")
     except Exception as e:
         print(f"  /metrics FAILED: {e}")
@@ -213,29 +237,31 @@ def cmd_test_tdad():
 
 def cmd_test_floor():
     import urllib.request
-    print("Testing Factory Floor (http://localhost:8888) ...")
+    base = f"http://localhost:{FLOOR_PORT}"
+    print(f"Testing Factory Floor ({base}) ...")
     try:
-        resp = urllib.request.urlopen("http://localhost:8888/health")
+        resp = urllib.request.urlopen(f"{base}/health")
         data = json.loads(resp.read())
         print(f"  /health: {data}")
     except Exception as e:
         print(f"  /health FAILED: {e}")
+        print(f"  (Is Factory Floor running? Start it with: python3 scripts/halo-test.py start-floor)")
         return
     try:
-        resp = urllib.request.urlopen("http://localhost:8888/api/state")
+        resp = urllib.request.urlopen(f"{base}/api/state")
         data = json.loads(resp.read())
         print(f"  /api/state: {list(data.keys())}")
     except Exception as e:
         print(f"  /api/state FAILED: {e}")
     try:
-        resp = urllib.request.urlopen("http://localhost:8888/api/csrf-token")
+        resp = urllib.request.urlopen(f"{base}/api/csrf-token")
         token = json.loads(resp.read())["csrf_token"]
         print(f"  /api/csrf-token: got token ({token[:16]}...)")
     except Exception as e:
         print(f"  /api/csrf-token FAILED: {e}")
         return
     try:
-        resp = urllib.request.urlopen("http://localhost:8888/metrics")
+        resp = urllib.request.urlopen(f"{base}/metrics")
         print(f"  /metrics (first line): {resp.read().decode().strip().split(chr(10))[0]}")
     except Exception as e:
         print(f"  /metrics FAILED: {e}")
@@ -243,22 +269,24 @@ def cmd_test_floor():
 
 def cmd_test_bridge():
     import urllib.request
-    print("Testing Agent-Bridge (http://localhost:9000) ...")
+    base = f"http://localhost:{BRIDGE_PORT}"
+    print(f"Testing Agent-Bridge ({base}) ...")
     try:
-        resp = urllib.request.urlopen("http://localhost:9000/health")
+        resp = urllib.request.urlopen(f"{base}/health")
         data = json.loads(resp.read())
         print(f"  /health: {data}")
     except Exception as e:
         print(f"  /health FAILED: {e}")
+        print(f"  (Is Agent-Bridge running? Start it with: python3 scripts/halo-test.py start-bridge)")
         return
     try:
-        resp = urllib.request.urlopen("http://localhost:9000/api/files")
+        resp = urllib.request.urlopen(f"{base}/api/files")
         data = json.loads(resp.read())
         print(f"  /api/files: {len(data['items'])} items at root")
     except Exception as e:
         print(f"  /api/files FAILED: {e}")
     try:
-        resp = urllib.request.urlopen("http://localhost:9000/api/launchers")
+        resp = urllib.request.urlopen(f"{base}/api/launchers")
         data = json.loads(resp.read())
         print(f"  /api/launchers: {list(data.keys())}")
     except Exception as e:
@@ -268,6 +296,7 @@ def cmd_test_bridge():
 def cmd_test_all():
     print("=" * 60)
     print("HALO Factory — Full Smoke Test")
+    print(f"  Kernel :{KERNEL_PORT}  TDAD :{TDAD_PORT}  Floor :{FLOOR_PORT}  Bridge :{BRIDGE_PORT}")
     print("=" * 60)
     print()
     cmd_test_kernel()
@@ -302,6 +331,8 @@ COMMANDS = {
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:
         print(__doc__)
+        print(f"Current port config: Kernel=:{KERNEL_PORT}  TDAD=:{TDAD_PORT}  "
+              f"Floor=:{FLOOR_PORT}  Bridge=:{BRIDGE_PORT}")
         print(f"Available commands: {', '.join(sorted(COMMANDS))}")
         sys.exit(1)
     COMMANDS[sys.argv[1]]()

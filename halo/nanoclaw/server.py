@@ -15,8 +15,8 @@ import urllib.request
 from halo.nanoclaw.memory import MemoryFile
 
 
-SOCKET_PATH = "/tmp/nanoclaw.sock"
-KERNEL_URL = "http://localhost:13305/v1/chat/completions"
+SOCKET_PATH = os.environ.get("HALO_NANOCLAW_SOCK", "/tmp/nanoclaw.sock")
+KERNEL_URL = os.environ.get("HALO_KERNEL_URL", "http://localhost:13305") + "/v1/chat/completions"
 DEFAULT_MODEL = "halo-reasoning"
 
 

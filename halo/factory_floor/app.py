@@ -148,5 +148,5 @@ async def metrics():
 
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8888)
+    import os, uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("HALO_FACTORY_FLOOR_PORT", "8888")))

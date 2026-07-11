@@ -119,4 +119,4 @@ async def _send_to_nanoclaw(message):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=9000)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("HALO_AGENT_BRIDGE_PORT", "9000")))

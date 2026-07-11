@@ -10,6 +10,14 @@ unit tests through live HTTP API calls to the full spec lifecycle.
 
 **Time required**: ~30 minutes for all tests.
 
+> **IMPORTANT — Port conflicts on Strix Halo**:
+> The SRS specifies Kernel at `:13305` and Agent-Bridge at `:9000`, but on your
+> Strix Halo system **Lemonade already occupies `:13305`** and other services use
+> `:9000`. This guide uses **alternative testing ports**: Kernel `:13306`,
+> Agent-Bridge `:19000`. In production, use the SRS-specified ports.
+> You can override any port via environment variables: `HALO_KERNEL_PORT`,
+> `HALO_TDAD_PORT`, `HALO_FACTORY_FLOOR_PORT`, `HALO_AGENT_BRIDGE_PORT`.
+
 ---
 
 ## Table of Contents
@@ -18,10 +26,10 @@ unit tests through live HTTP API calls to the full spec lifecycle.
 2. [Unit Tests (Automated)](#2-unit-tests-automated)
 3. [Helm Chart Tests](#3-helm-chart-tests)
 4. [Service-by-Service Live Tests](#4-service-by-service-live-tests)
-   - 4.1 [HALO Kernel Gateway (:13305)](#41-halo-kernel-gateway-13305)
+   - 4.1 [HALO Kernel Gateway (:13306)](#41-halo-kernel-gateway-13306)
    - 4.2 [TDAD Service (:8402)](#42-tdad-service-8402)
    - 4.3 [Factory Floor (:8888)](#43-factory-floor-8888)
-   - 4.4 [Agent-Bridge (:9000)](#44-agent-bridge-9000)
+   - 4.4 [Agent-Bridge (:19000)](#44-agent-bridge-19000)
    - 4.5 [Nanoclaw Unix Socket](#45-nanoclaw-unix-socket)
 5. [Spec Parser & State Machine](#5-spec-parser--state-machine)
 6. [Dependency Resolver](#6-dependency-resolver)
@@ -54,8 +62,8 @@ This creates `/tmp/halo-test/projects/demo/` with:
 Open 4 terminals and run:
 
 ```bash
-# Terminal 1 — HALO Kernel
-python3 -m uvicorn halo.kernel.gateway:app --host 0.0.0.0 --port 13305
+# Terminal 1 — HALO Kernel (port 13306, since 13305 is used by Lemonade)
+python3 -m uvicorn halo.kernel.gateway:app --host 0.0.0.0 --port 13306
 
 # Terminal 2 — TDAD
 python3 -m uvicorn halo.tdad.app:app --host 0.0.0.0 --port 8402
@@ -63,9 +71,9 @@ python3 -m uvicorn halo.tdad.app:app --host 0.0.0.0 --port 8402
 # Terminal 3 — Factory Floor
 python3 -m uvicorn halo.factory_floor.app:app --host 0.0.0.0 --port 8888
 
-# Terminal 4 — Agent-Bridge
+# Terminal 4 — Agent-Bridge (port 19000, since 9000 is commonly occupied)
 HALO_PROJECT_DIR=/tmp/halo-test/projects/demo \
-  python3 -m uvicorn halo.agent_bridge.app:app --host 0.0.0.0 --port 9000
+  python3 -m uvicorn halo.agent_bridge.app:app --host 0.0.0.0 --port 19000
 ```
 
 ### Run the smoke test
@@ -80,7 +88,7 @@ python3 scripts/halo-test.py test-all
 HALO Factory — Full Smoke Test
 ============================================================
 
-Testing HALO Kernel (http://localhost:13305) ...
+Testing HALO Kernel (http://localhost:13306) ...
   /health: {'status': 'ok', 'models': ['halo-fast', 'halo-reasoning', 'halo-vision']}
   /v1/models: ['halo-fast', 'halo-reasoning', 'halo-vision']
   /v1/chat/completions (halo-fast): [HALO Kernel placeholder response]
@@ -97,7 +105,7 @@ Testing Factory Floor (http://localhost:8888) ...
   /api/csrf-token: got token (0sC0-lXQ9k39dByT...)
   /metrics (first line): # HELP halo_factory_floor_up Service up
 
-Testing Agent-Bridge (http://localhost:9000) ...
+Testing Agent-Bridge (http://localhost:19000) ...
   /health: {'status': 'ok'}
   /api/files: 4 items at root
   /api/launchers: ['terminal', 'vscode', 'files', 'spec']
@@ -188,17 +196,17 @@ Verify you see Deployments, PVCs, Services, Ingress, and NetworkPolicy rendered.
 Each section starts a service and tests its endpoints with `curl`. Run each in a
 separate terminal or background the process.
 
-### 4.1 HALO Kernel Gateway (:13305)
+### 4.1 HALO Kernel Gateway (:13306)
 
 **Start**:
 ```bash
-python3 -m uvicorn halo.kernel.gateway:app --host 0.0.0.0 --port 13305
+python3 -m uvicorn halo.kernel.gateway:app --host 0.0.0.0 --port 13306
 ```
 
 #### Test: Health check
 
 ```bash
-curl -s http://localhost:13305/health | python3 -m json.tool
+curl -s http://localhost:13306/health | python3 -m json.tool
 ```
 
 **Expected**:
@@ -209,7 +217,7 @@ curl -s http://localhost:13305/health | python3 -m json.tool
 #### Test: List models
 
 ```bash
-curl -s http://localhost:13305/v1/models | python3 -m json.tool
+curl -s http://localhost:13306/v1/models | python3 -m json.tool
 ```
 
 **Expected**: 3 models listed with `id` fields `halo-fast`, `halo-reasoning`, `halo-vision`.
@@ -217,7 +225,7 @@ curl -s http://localhost:13305/v1/models | python3 -m json.tool
 #### Test: Chat completion (accepted)
 
 ```bash
-curl -s -X POST http://localhost:13305/v1/chat/completions \
+curl -s -X POST http://localhost:13306/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"halo-fast","messages":[{"role":"user","content":"Write a hello world function"}]}' \
   | python3 -m json.tool
@@ -234,13 +242,13 @@ to fill the queue, then send one more:
 ```bash
 # Fire 8 requests in parallel
 for i in $(seq 1 8); do
-  curl -s -X POST http://localhost:13305/v1/chat/completions \
+  curl -s -X POST http://localhost:13306/v1/chat/completions \
     -H "Content-Type: application/json" \
     -d '{"model":"halo-fast","messages":[{"role":"user","content":"hello"}]}' &
 done
 
 # The 9th should get HTTP 202
-curl -s -i -X POST http://localhost:13305/v1/chat/completions \
+curl -s -i -X POST http://localhost:13306/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"halo-fast","messages":[{"role":"user","content":"hello"}]}' \
   | head -10
@@ -256,7 +264,7 @@ curl -s -i -X POST http://localhost:13305/v1/chat/completions \
 #### Test: Unknown model rejected
 
 ```bash
-curl -s -X POST http://localhost:13305/v1/chat/completions \
+curl -s -X POST http://localhost:13306/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"nonexistent","messages":[]}' | python3 -m json.tool
 ```
@@ -266,7 +274,7 @@ curl -s -X POST http://localhost:13305/v1/chat/completions \
 #### Test: Prometheus metrics
 
 ```bash
-curl -s http://localhost:13305/metrics
+curl -s http://localhost:13306/metrics
 ```
 
 **Expected**: Prometheus-format text with metrics like:
@@ -453,24 +461,24 @@ curl -s http://localhost:8888/metrics
 
 ---
 
-### 4.4 Agent-Bridge (:9000)
+### 4.4 Agent-Bridge (:19000)
 
 **Start** (point to the demo project):
 ```bash
 HALO_PROJECT_DIR=/tmp/halo-test/projects/demo \
-  python3 -m uvicorn halo.agent_bridge.app:app --host 0.0.0.0 --port 9000
+  python3 -m uvicorn halo.agent_bridge.app:app --host 0.0.0.0 --port 19000
 ```
 
 #### Test: Health check
 
 ```bash
-curl -s http://localhost:9000/health
+curl -s http://localhost:19000/health
 ```
 
 #### Test: Get current spec
 
 ```bash
-curl -s http://localhost:9000/api/spec -w "\n" | head -c 300
+curl -s http://localhost:19000/api/spec -w "\n" | head -c 300
 ```
 
 **Expected**: JSON with `file: "SPEC-001.md"` and `content` containing the spec
@@ -479,7 +487,7 @@ frontmatter and body.
 #### Test: List files
 
 ```bash
-curl -s http://localhost:9000/api/files | python3 -m json.tool
+curl -s http://localhost:19000/api/files | python3 -m json.tool
 ```
 
 **Expected**: Items array with `ARCH.md` (file), `specs` (dir), `src` (dir),
@@ -488,7 +496,7 @@ curl -s http://localhost:9000/api/files | python3 -m json.tool
 #### Test: Browse subdirectory
 
 ```bash
-curl -s http://localhost:9000/api/files?path=src | python3 -m json.tool
+curl -s http://localhost:19000/api/files?path=src | python3 -m json.tool
 ```
 
 **Expected**: `{"path": "src", "items": [{"name": "app.py", "size": 148, "type":
@@ -497,7 +505,7 @@ curl -s http://localhost:9000/api/files?path=src | python3 -m json.tool
 #### Test: Launchers
 
 ```bash
-curl -s http://localhost:9000/api/launchers | python3 -m json.tool
+curl -s http://localhost:19000/api/launchers | python3 -m json.tool
 ```
 
 **Expected**: Links to terminal, vscode, files, spec.
@@ -505,7 +513,7 @@ curl -s http://localhost:9000/api/launchers | python3 -m json.tool
 #### Test: Chat (Nanoclaw not running — expected error)
 
 ```bash
-curl -s -X POST http://localhost:9000/api/chat \
+curl -s -X POST http://localhost:19000/api/chat \
   -H "Content-Type: application/json" \
   -d '{"message":"hello"}' | python3 -m json.tool
 ```
@@ -517,9 +525,9 @@ See [§4.5](#45-nanoclaw-unix-socket) to start Nanoclaw.
 
 ### 4.5 Nanoclaw Unix Socket
 
-**Start** (requires HALO Kernel running on :13305):
+**Start** (requires HALO Kernel running on :13306):
 ```bash
-python3 -m halo.nanoclaw.server
+HALO_KERNEL_URL=http://localhost:13306 python3 -m halo.nanoclaw.server
 ```
 
 This creates `/tmp/nanoclaw.sock`. Test with a Python one-liner:
@@ -765,7 +773,7 @@ This test starts Kernel + TDAD together and verifies their interaction:
 
 ```bash
 # Start Kernel
-python3 -m uvicorn halo.kernel.gateway:app --host 127.0.0.1 --port 13305 &
+python3 -m uvicorn halo.kernel.gateway:app --host 127.0.0.1 --port 13306 &
 sleep 2
 
 # Start TDAD
@@ -792,7 +800,7 @@ echo ""
 
 # 3. Use Kernel to "generate" a plan (mock)
 echo "=== Kernel: Chat completion (plan generation) ==="
-curl -s -X POST http://localhost:13305/v1/chat/completions \
+curl -s -X POST http://localhost:13306/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"halo-reasoning","messages":[{"role":"user","content":"Create a plan for SPEC-001: Hello World FastAPI Endpoint"}]}'
 
@@ -801,7 +809,7 @@ echo ""
 
 # 4. Check Kernel metrics reflect the request
 echo "=== Kernel: Metrics after requests ==="
-curl -s http://localhost:13305/metrics | grep requests_total
+curl -s http://localhost:13306/metrics | grep requests_total
 
 echo ""
 
@@ -842,8 +850,8 @@ halo_tdad_edges 1
 
 ```bash
 # Find what's using a port
-lsof -i :13305
-ss -tlnp | grep 13305
+lsof -i :13306
+ss -tlnp | grep 13306
 
 # Kill the process
 kill -9 <PID>
@@ -950,7 +958,7 @@ points to a project directory containing a `specs/` subdirectory:
 
 ```bash
 export HALO_PROJECT_DIR=/tmp/halo-test/projects/demo
-python3 -m uvicorn halo.agent_bridge.app:app --port 9000
+python3 -m uvicorn halo.agent_bridge.app:app --port 19000
 ```
 
 ---
