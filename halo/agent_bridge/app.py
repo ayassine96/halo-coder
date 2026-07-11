@@ -102,19 +102,31 @@ async def chat_stream(request: Request):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-async def _send_to_nanoclaw(message):
-    """Send message to Nanoclaw via Unix socket."""
-    try:
-        reader, writer = await asyncio.open_unix_connection(_nanoclaw_sock)
-        writer.write(json.dumps({"action": "chat", "message": message}).encode())
-        writer.write(b"\n")
-        await writer.drain()
-        data = await reader.readline()
-        writer.close()
-        await writer.wait_closed()
-        return json.loads(data.decode()).get("response", "")
-    except Exception as e:
-        return f"[nanoclaw error: {e}]"
+async def _send_to_nanoclaw(message, max_retries=5):
+    """Send message to Nanoclaw via Unix socket.
+
+    Retries with exponential backoff (0.5s, 1s, 2s, 4s, 8s) on transient
+    connection errors (socket not yet created by Nanoclaw).
+    """
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            reader, writer = await asyncio.open_unix_connection(_nanoclaw_sock)
+            writer.write(json.dumps({"action": "chat", "message": message}).encode())
+            writer.write(b"\n")
+            await writer.drain()
+            data = await reader.readline()
+            writer.close()
+            await writer.wait_closed()
+            return json.loads(data.decode()).get("response", "")
+        except (FileNotFoundError, ConnectionRefusedError, ConnectionResetError,
+                BrokenPipeError, OSError) as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                await asyncio.sleep(0.5 * (2 ** attempt))
+        except Exception as e:
+            return f"[nanoclaw error: {e}]"
+    return f"[nanoclaw error: {last_error}]"
 
 
 if __name__ == "__main__":

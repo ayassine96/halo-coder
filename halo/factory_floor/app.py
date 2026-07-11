@@ -6,10 +6,11 @@ CSRF protection on all mutating endpoints (SEC-6).
 """
 
 import json
+import os
 import secrets
 
 from fastapi import FastAPI, Request, Response, HTTPException, Depends
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -21,7 +22,15 @@ from halo.common.models import (
 
 app = FastAPI(title="HALO Factory Floor", version="2.0.0-halo")
 
+_static_dir = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
 _csrf_tokens = set()
+
+@app.get("/")
+async def root():
+    with open(os.path.join(_static_dir, "index.html")) as f:
+        return HTMLResponse(f.read())
 
 
 class ApproveRequest(BaseModel):
@@ -148,5 +157,5 @@ async def metrics():
 
 
 if __name__ == "__main__":
-    import os, uvicorn
+    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("HALO_FACTORY_FLOOR_PORT", "8888")))
