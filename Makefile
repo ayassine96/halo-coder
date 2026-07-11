@@ -653,10 +653,10 @@ local-down: ## Remove the local workspace (add DELETE=1 to also delete the minik
 # kube-coder's pattern). The halo-infra chart deploys Redis, MinIO, Qdrant.
 
 halo-tests: ## Run HALO Python unit tests (all services)
-	cd halo && python3 -m unittest discover -s tests -p 'test_*.py' -v
+	python3 -m unittest discover -s halo/tests -p 'test_*.py' -v
 
 halo-coverage: ## Run HALO Python tests with coverage report
-	cd halo && coverage run -m unittest discover -s tests -p 'test_*.py' -v && coverage report && coverage html
+	coverage run -m unittest discover -s halo/tests -p 'test_*.py' -v && coverage report && coverage html
 
 halo-helm-lint: ## Lint halo-infra Helm chart
 	helm lint charts/halo-infra/
