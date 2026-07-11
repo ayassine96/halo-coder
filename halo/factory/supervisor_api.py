@@ -146,6 +146,16 @@ async def get_state():
     except Exception:
         pass
 
+    try:
+        redis_host = os.environ.get("HALO_REDIS_HOST", "localhost")
+        redis_port = int(os.environ.get("HALO_REDIS_PORT", "6379"))
+        import redis as redis_mod
+        r = redis_mod.Redis(host=redis_host, port=redis_port, socket_timeout=1)
+        raw_logs = r.lrange(f"{CHANNEL_LOGS}:recent", 0, 49)
+        logs = [json.loads(l.decode()) if isinstance(l, bytes) else json.loads(l) for l in raw_logs]
+    except Exception:
+        pass
+
     return {
         "specs": specs_list,
         "devpods": devpods_list,

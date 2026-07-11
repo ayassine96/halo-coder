@@ -19,10 +19,15 @@ class EventPublisher:
     def publish(self, channel, event_type, spec_id="", data=""):
         """Publish an event. Degrades gracefully if Redis is down (OR-NF2)."""
         from halo.common.models import EventMessage
+        import json
         msg = EventMessage(channel=channel, event_type=event_type, spec_id=spec_id, data=str(data))
         if self.redis and self._redis_available:
             try:
-                self.redis.publish(channel, msg.__dict__)
+                payload = json.dumps(msg.__dict__)
+                self.redis.publish(channel, payload)
+                if channel == CHANNEL_LOGS:
+                    self.redis.lpush(f"{channel}:recent", payload)
+                    self.redis.ltrim(f"{channel}:recent", 0, 499)
                 return True
             except Exception as e:
                 self._redis_available = False

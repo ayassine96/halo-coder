@@ -83,6 +83,19 @@ class DevPodManager:
             return self._active_devpods.get(spec_id, {"status": "not_found"})
         return dict(self._active_devpods)
 
+    def list_devpods(self):
+        """Return DevPod list for API consumption."""
+        result = []
+        for spec_id, info in self._active_devpods.items():
+            result.append({
+                "spec_id": spec_id,
+                "name": info.get("name", ""),
+                "status": info.get("status", "unknown"),
+                "started_at": info.get("started_at", ""),
+                "last_active": info.get("last_active", 0),
+            })
+        return result
+
     @property
     def active_count(self):
         return sum(1 for v in self._active_devpods.values() if v["status"] == "running")

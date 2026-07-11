@@ -37,14 +37,32 @@ document.getElementById('pause-btn').addEventListener('click', async () => {
   document.getElementById('pause-btn').textContent = paused ? 'Resume' : 'Pause';
 });
 
+function renderAll(state) {
+  paused = state.paused || false;
+  document.getElementById('pause-btn').textContent = paused ? 'Resume' : 'Pause';
+  if (state.specs) renderKanban(state.specs);
+  if (state.devpods) renderDevPods(state.devpods);
+  if (state.model_metrics) renderModels(state.model_metrics);
+}
+
 // SSE connection with auto-reconnect (FF-NF1)
 function connectSSE() {
   const es = new EventSource(`${API_BASE}/api/sse`);
   es.onmessage = (event) => {
     const data = JSON.parse(event.data);
-    if (data.type === 'log') appendLog(data);
-    if (data.type === 'approval_request') addApprovalCard(data);
-    if (data.type === 'alert') console.warn('ALERT:', data);
+    if (data.type === 'connected') return;
+    if (data.type === 'log' || data.channel === 'halo:factory:logs') {
+      appendLog({type: 'log', message: data.data || data.message || '', spec_id: data.spec_id || ''});
+    }
+    if (data.type === 'approval_request' || data.channel === 'halo:factory:approvals') {
+      addApprovalCard({spec_id: data.spec_id, data: data.data || ''});
+    }
+    if (data.type === 'alert' || data.channel === 'halo:factory:alerts') {
+      console.warn('ALERT:', data);
+    }
+    if (data.type === 'metric' || data.channel === 'halo:factory:metrics') {
+      fetchState().then(renderAll);
+    }
   };
   es.onerror = () => {
     es.close();
@@ -53,10 +71,9 @@ function connectSSE() {
 }
 
 connectSSE();
-fetchState().then(state => {
-  paused = state.paused || false;
-  renderKanban(state.specs || []);
-});
+fetchState().then(renderAll);
 
-window.haloApp = { fetchCsrf, fetchState, switchView, API_BASE };
-export { fetchCsrf, fetchState, switchView };
+setInterval(() => { fetchState().then(renderAll); }, 5000);
+
+window.haloApp = { fetchCsrf, fetchState, switchView, renderAll, API_BASE };
+export { fetchCsrf, fetchState, switchView, renderAll };
