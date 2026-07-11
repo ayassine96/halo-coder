@@ -1,0 +1,50 @@
+# Unit tests for halo-infra chart
+suite: halo-infra defaults
+tests:
+  - it: renders Redis Deployment with defaults
+    asserts:
+      - hasDocument:
+          kind: Deployment
+          name: halo-redis
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: redis:7-alpine
+
+  - it: renders MinIO Deployment with defaults
+    asserts:
+      - hasDocument:
+          kind: Deployment
+          name: halo-minio
+      - equal:
+          path: spec.replicas
+          value: 1
+
+  - it: renders Qdrant Deployment with defaults
+    asserts:
+      - hasDocument:
+          kind: Deployment
+          name: halo-qdrant
+      - equal:
+          path: spec.replicas
+          value: 1
+
+  - it: renders NetworkPolicy
+    asserts:
+      - hasDocument:
+          kind: NetworkPolicy
+          name: halo-infra-default-deny
+
+  - it: renders PVCs for all services
+    asserts:
+      - hasDocument:
+          kind: PersistentVolumeClaim
+          name: halo-redis
+      - hasDocument:
+          kind: PersistentVolumeClaim
+          name: halo-minio
+      - hasDocument:
+          kind: PersistentVolumeClaim
+          name: halo-qdrant

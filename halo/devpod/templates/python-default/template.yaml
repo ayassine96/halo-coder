@@ -1,0 +1,9 @@
+# python-default DevPod template
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devpod-template-python
+data:
+  language: python
+  version: "3.12"
+  frameworks: fastapi,django

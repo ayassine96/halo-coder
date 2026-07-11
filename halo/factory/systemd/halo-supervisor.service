@@ -1,0 +1,15 @@
+[Unit]
+Description=HALO Factory Supervisor — Event Loop
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/halo/factory/supervisor.py
+Restart=on-failure
+RestartSec=5
+Environment=HALO_REDIS_URL=redis://localhost:6379
+Environment=HALO_K3S_API=http://localhost:6443
+Environment=HALO_PROJECTS_DIR=/var/halo/projects
+
+[Install]
+WantedBy=multi-user.target

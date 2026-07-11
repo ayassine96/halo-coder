@@ -1,0 +1,62 @@
+# HALO Factory shared infrastructure
+namespace: halo
+
+# Redis — Streams queue + Pub/Sub events
+redis:
+  enabled: true
+  image: redis:7-alpine
+  port: 6379
+  storage: 5Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# MinIO — S3-compatible artifact storage
+minio:
+  enabled: true
+  image: minio/minio:latest
+  port: 9020
+  apiPort: 9000
+  storage: 50Gi
+  rootUser: halo-admin
+  rootPassword: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# Qdrant — vector database for RAG
+qdrant:
+  enabled: true
+  image: qdrant/qdrant:latest
+  port: 6333
+  storage: 10Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1
+      memory: 2Gi
+
+# Dagger engine
+dagger:
+  enabled: false
+  image: registry.dagger.io/engine:v0.12.0
+  resources:
+    requests:
+      cpu: 1
+      memory: 2Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
+
+networkPolicy:
+  enabled: true

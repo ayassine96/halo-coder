@@ -1,0 +1,72 @@
+{{- if .Values.redis.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: halo-redis
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: halo-redis
+    app.kubernetes.io/part-of: halo-infra
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: halo-redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: halo-redis
+    spec:
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image }}
+          ports:
+            - containerPort: {{ .Values.redis.port }}
+          args: ["--save", "60", "1", "--loglevel", "warning"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          {{- with .Values.redis.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: halo-redis
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: halo-redis
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: halo-redis
+    app.kubernetes.io/part-of: halo-infra
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.redis.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: halo-redis
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: halo-redis
+    app.kubernetes.io/part-of: halo-infra
+spec:
+  selector:
+    app.kubernetes.io/name: halo-redis
+  ports:
+    - port: {{ .Values.redis.port }}
+      targetPort: {{ .Values.redis.port }}
+{{- end }}

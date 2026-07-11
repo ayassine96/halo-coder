@@ -57,6 +57,9 @@ jobs:
       - name: Template workspace-controller chart
         run: helm template test-wc charts/workspace-controller/ -f charts/workspace-controller/tests/test-values.yaml > /dev/null
 
+      - name: Lint halo-infra chart
+        run: helm lint charts/halo-infra/
+
   helm-test:
     name: Helm Unit Tests
     runs-on: ubuntu-latest
@@ -78,6 +81,9 @@ jobs:
       - name: Run unit tests (workspace-controller)
         run: helm unittest charts/workspace-controller/
 
+      - name: Run unit tests (halo-infra)
+        run: helm unittest charts/halo-infra/
+
   python-tests:
     name: Server.py Unit Tests
     runs-on: ubuntu-latest
@@ -92,6 +98,21 @@ jobs:
 
       - name: Run server.py tests
         run: make python-tests
+
+  halo-python-tests:
+    name: HALO Factory Python Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Run HALO tests
+        run: make halo-tests
 
   web-tests:
     name: Dashboard SPA Tests

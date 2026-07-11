@@ -50,3 +50,9 @@ charts/workspace/web/coverage/
 *.coverage
 .coverage
 .coverage.*
+
+# HALO Python bytecode
+halo/**/__pycache__/
+halo/**/*.pyc
+halo/.coverage
+halo/htmlcov/

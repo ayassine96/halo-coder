@@ -1,0 +1,10 @@
+/* HALO Factory Floor — dark mode styles (placeholder) */
+:root {
+  --draft: #8b949e;
+  --ready: #3fb950;
+  --in_progress: #58a6ff;
+  --implemented: #a371f7;
+  --failed: #f85149;
+  --merged: #ffffff;
+}
+body { background: #0d1117; color: #c9d1d9; margin: 0; }

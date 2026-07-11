@@ -1,0 +1,9 @@
+# go-default DevPod template
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devpod-template-go
+data:
+  language: go
+  version: "1.22"
+  frameworks: stdlib

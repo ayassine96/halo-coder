@@ -1,0 +1,9 @@
+# node-default DevPod template
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devpod-template-node
+data:
+  language: node
+  version: "20"
+  frameworks: nextjs,vite

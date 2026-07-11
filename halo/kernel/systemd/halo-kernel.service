@@ -1,0 +1,18 @@
+[Unit]
+Description=HALO Kernel — vLLM Inference Gateway
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/halo/kernel/start_vllm.sh
+Restart=on-failure
+RestartSecBurstStart=5
+RestartSec=5
+Environment=HSA_OVERRIDE_GFX_VERSION=11.5.1
+Environment=PYTORCH_ROCM_ARCH=gfx1151
+Environment=FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE
+Environment=ROCBLAS_USE_HIPBLASLT=1
+Environment=VGM_MODE=High
+
+[Install]
+WantedBy=multi-user.target

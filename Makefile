@@ -1,5 +1,5 @@
 # Makefile for kube-coder
-.PHONY: build push deploy-base deploy-all clean help status version deploy logs shell test rollback delete-user migrate-user migrate-all migrate-status new-user validate-user require-user release users-sync dashboard-web dashboard-web-install dashboard-web-test dashboard-web-clean python-tests python-coverage dashboard-web-coverage coverage test-coverage local local-up local-build local-secret local-deploy local-forward local-info local-down mobile-install mobile-typecheck mobile-web mobile-export-web mobile-screenshots mobile-build mobile-build-ios mobile-build-android mobile-submit-ios mobile-clean
+.PHONY: build push deploy-base deploy-all clean help status version deploy logs shell test rollback delete-user migrate-user migrate-all migrate-status new-user validate-user require-user release users-sync dashboard-web dashboard-web-install dashboard-web-test dashboard-web-clean python-tests python-coverage dashboard-web-coverage coverage test-coverage local local-up local-build local-secret local-deploy local-forward local-info local-down mobile-install mobile-typecheck mobile-web mobile-export-web mobile-screenshots mobile-build mobile-build-ios mobile-build-android mobile-submit-ios mobile-clean halo-tests halo-coverage halo-helm-lint halo-helm-test halo-test-all
 
 # =============================================================================
 # Generic per-user helpers
@@ -645,3 +645,23 @@ local-down: ## Remove the local workspace (add DELETE=1 to also delete the minik
 	-$(LOCAL_HELM) uninstall $(LOCAL_RELEASE) -n $(LOCAL_NS)
 	-$(LOCAL_HELM) uninstall base-infrastructure -n $(LOCAL_NS)
 	@if [ "$(DELETE)" = "1" ]; then echo "Deleting minikube profile $(LOCAL_PROFILE)..."; minikube delete -p $(LOCAL_PROFILE); else echo "Cluster kept. Run 'make local-down DELETE=1' to delete the minikube profile."; fi
+
+# =============================================================================
+# HALO Factory — agentic software factory extensions
+# =============================================================================
+# All HALO services live under halo/. Tests use stdlib unittest (matching
+# kube-coder's pattern). The halo-infra chart deploys Redis, MinIO, Qdrant.
+
+halo-tests: ## Run HALO Python unit tests (all services)
+	cd halo && python3 -m unittest discover -s tests -p 'test_*.py' -v
+
+halo-coverage: ## Run HALO Python tests with coverage report
+	cd halo && coverage run -m unittest discover -s tests -p 'test_*.py' -v && coverage report && coverage html
+
+halo-helm-lint: ## Lint halo-infra Helm chart
+	helm lint charts/halo-infra/
+
+halo-helm-test: ## Run Helm unit tests for halo-infra chart
+	helm unittest charts/halo-infra/
+
+halo-test-all: halo-tests halo-helm-lint halo-helm-test ## Run all HALO tests (Python + Helm)

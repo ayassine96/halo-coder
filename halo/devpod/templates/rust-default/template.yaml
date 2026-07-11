@@ -1,0 +1,9 @@
+# rust-default DevPod template
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devpod-template-rust
+data:
+  language: rust
+  version: stable
+  frameworks: cargo
