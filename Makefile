@@ -665,3 +665,18 @@ halo-helm-test: ## Run Helm unit tests for halo charts
 	helm unittest charts/halo-infra/ charts/halo-factory-floor/
 
 halo-test-all: halo-tests halo-helm-lint halo-helm-test ## Run all HALO tests (Python + Helm)
+
+halo-start: ## Start all HALO services (Kernel, Supervisor, Floor, TDAD, Bridge, Nanoclaw)
+	python3 scripts/halo-test.py start-all
+
+halo-stop: ## Stop all HALO services and free ports
+	python3 scripts/halo-test.py stop-all
+
+halo-status: ## Show HALO service status
+	python3 scripts/halo-test.py status
+
+halo-smoke: ## Run smoke tests against all running HALO services
+	python3 scripts/halo-test.py test-all
+
+halo-demo: ## Create demo spec in /tmp/halo-test
+	python3 scripts/halo-test.py create-spec

@@ -1,36 +1,48 @@
-# HALO Factory — Manual Testing Guide
+# HALO Factory — Manual Testing Guide (Pass 2)
 
 This guide walks you through testing every HALO Factory service end-to-end, from
 unit tests through live HTTP API calls to the full spec lifecycle.
 
 **Prerequisites**:
 - Python 3.11+
-- `pip install --break-system-packages fastapi uvicorn httpx pyyaml redis minio`
+- `pip install --break-system-packages fastapi uvicorn httpx pydantic redis pyyaml`
+- Redis running on :6379:
+  ```bash
+  docker run -d --name halo-redis -p 6379:6379 redis:7-alpine
+  ```
+- Lemonade running on :13305 (Strix Halo LLM server)
 - Git, curl, jq (optional but helpful)
 
-**Time required**: ~30 minutes for all tests.
+**Time required**: ~15 minutes for all tests.
 
-> **IMPORTANT — Port conflicts on Strix Halo**:
-> The SRS specifies Kernel at `:13305` and Agent-Bridge at `:9000`, but on your
-> Strix Halo system **Lemonade already occupies `:13305`** and other services use
-> `:9000`. This guide uses **alternative testing ports**: Kernel `:13306`,
-> Agent-Bridge `:19000`. In production, use the SRS-specified ports.
-> You can override any port via environment variables: `HALO_KERNEL_PORT`,
-> `HALO_TDAD_PORT`, `HALO_FACTORY_FLOOR_PORT`, `HALO_AGENT_BRIDGE_PORT`.
+> **IMPORTANT — Port Map (Pass 2)**:
+> | Service | Port | Notes |
+> |---------|------|-------|
+> | Lemonade (external) | :13305 | LLM backend — must be running |
+> | HALO Kernel (proxy) | :13306 | Proxies to Lemonade via httpx |
+> | Supervisor API | :9091 | State, mutations, SSE, health (A9) |
+> | Factory Floor (SPA) | :8888 | Thin proxy to Supervisor API |
+> | TDAD | :8402 | tree-sitter AST + graph store |
+> | Agent-Bridge | :19000 | Nanoclaw proxy, spec/file endpoints |
+> | Redis | :6379 | Streams + Pub/Sub + log persistence |
+>
+> Override any port via env vars: `HALO_KERNEL_PORT`, `HALO_SUPERVISOR_PORT`,
+> `HALO_FACTORY_FLOOR_PORT`, `HALO_TDAD_PORT`, `HALO_AGENT_BRIDGE_PORT`.
 
 ---
 
 ## Table of Contents
 
-1. [Quick Start: One-Command Smoke Test](#1-quick-start-one-command-smoke-test)
+1. [Quick Start: Start-All + Smoke Test](#1-quick-start-start-all--smoke-test)
 2. [Unit Tests (Automated)](#2-unit-tests-automated)
 3. [Helm Chart Tests](#3-helm-chart-tests)
 4. [Service-by-Service Live Tests](#4-service-by-service-live-tests)
    - 4.1 [HALO Kernel Gateway (:13306)](#41-halo-kernel-gateway-13306)
-   - 4.2 [TDAD Service (:8402)](#42-tdad-service-8402)
-   - 4.3 [Factory Floor (:8888)](#43-factory-floor-8888)
-   - 4.4 [Agent-Bridge (:19000)](#44-agent-bridge-19000)
-   - 4.5 [Nanoclaw Unix Socket](#45-nanoclaw-unix-socket)
+   - 4.2 [Supervisor API (:9091)](#42-supervisor-api-9091)
+   - 4.3 [TDAD Service (:8402)](#43-tdad-service-8402)
+   - 4.4 [Factory Floor (:8888)](#44-factory-floor-8888)
+   - 4.5 [Agent-Bridge (:19000)](#45-agent-bridge-19000)
+   - 4.6 [Nanoclaw Unix Socket](#46-nanoclaw-unix-socket)
 5. [Spec Parser & State Machine](#5-spec-parser--state-machine)
 6. [Dependency Resolver](#6-dependency-resolver)
 7. [Full Spec Lifecycle (End-to-End)](#7-full-spec-lifecycle-end-to-end)
@@ -40,12 +52,21 @@ unit tests through live HTTP API calls to the full spec lifecycle.
 
 ---
 
-## 1. Quick Start: One-Command Smoke Test
+## 1. Quick Start: Start-All + Smoke Test
 
-A helper script (`scripts/halo-test.py`) automates starting services and running
-smoke tests against them.
+The `scripts/halo-test.py` helper (updated for Pass 2) can start ALL services
+with one command, manage ports, kill stale processes, and run smoke tests.
 
-### Create a demo project with a sample spec
+### Step 1: Stop any stale processes and free ports
+
+```bash
+python3 scripts/halo-test.py stop-all
+```
+
+This kills all HALO processes and frees all ports. **Always run this first**
+to avoid port conflicts from previous sessions.
+
+### Step 2: Create a demo project with a sample spec
 
 ```bash
 python3 scripts/halo-test.py create-spec
@@ -57,26 +78,43 @@ This creates `/tmp/halo-test/projects/demo/` with:
 - `tests/test_app.py` — matching test
 - `ARCH.md` — architecture doc
 
-### Start all services (in separate terminals)
-
-Open 4 terminals and run:
+### Step 3: Start all services
 
 ```bash
-# Terminal 1 — HALO Kernel (port 13306, since 13305 is used by Lemonade)
-python3 -m uvicorn halo.kernel.gateway:app --host 0.0.0.0 --port 13306
-
-# Terminal 2 — TDAD
-python3 -m uvicorn halo.tdad.app:app --host 0.0.0.0 --port 8402
-
-# Terminal 3 — Factory Floor
-python3 -m uvicorn halo.factory_floor.app:app --host 0.0.0.0 --port 8888
-
-# Terminal 4 — Agent-Bridge (port 19000, since 9000 is commonly occupied)
-HALO_PROJECT_DIR=/tmp/halo-test/projects/demo \
-  python3 -m uvicorn halo.agent_bridge.app:app --host 0.0.0.0 --port 19000
+python3 scripts/halo-test.py start-all
 ```
 
-### Run the smoke test
+This starts all 6 services in the background with correct port assignments
+and environment variables:
+- HALO Kernel (:13306) — proxies to Lemonade (:13305)
+- Supervisor API (:9091) — includes HTTP API + inotify spec watcher
+- Factory Floor (:8888) — thin proxy to Supervisor API
+- TDAD (:8402) — tree-sitter AST + graph store
+- Agent-Bridge (:19000) — Nanoclaw proxy
+- Nanoclaw — Unix socket at /tmp/nanoclaw.sock
+
+### Step 4: Check service status
+
+```bash
+python3 scripts/halo-test.py status
+```
+
+**Expected output**:
+```
+HALO Service Status:
+  Service                    Port    Status     PID
+  ------------------------- -------- ---------- --------
+  HALO Kernel (Lemonade proxy) :13306  RUNNING   12345
+  Supervisor API             :9091   RUNNING    12346
+  Factory Floor (proxy)      :8888   RUNNING    12347
+  TDAD (tree-sitter)         :8402   RUNNING    12348
+  Agent-Bridge               :19000  RUNNING    12349
+  Redis                      :6379   RUNNING    -
+  Lemonade (external)        :13305  RUNNING    -
+  Nanoclaw socket            socket  RUNNING    -
+```
+
+### Step 5: Run the smoke test
 
 ```bash
 python3 scripts/halo-test.py test-all
@@ -85,34 +123,49 @@ python3 scripts/halo-test.py test-all
 **Expected output**:
 ```
 ============================================================
-HALO Factory — Full Smoke Test
+HALO Factory — Full Smoke Test (Pass 2)
+  Kernel :13306  Supervisor :9091  Floor :8888
+  TDAD :8402  Bridge :19000
 ============================================================
 
 Testing HALO Kernel (http://localhost:13306) ...
-  /health: {'status': 'ok', 'models': ['halo-fast', 'halo-reasoning', 'halo-vision']}
-  /v1/models: ['halo-fast', 'halo-reasoning', 'halo-vision']
-  /v1/chat/completions (halo-fast): [HALO Kernel placeholder response]
-  /metrics (first line): # HELP halo_kernel_requests_total Total requests
+  /health: status=ok backend_reachable=True
+           models=['halo-fast', 'halo-reasoning', 'halo-coder', 'halo-vision']
+  /v1/models: ['halo-fast', 'halo-reasoning', 'halo-coder', 'halo-vision']
+  /v1/chat/completions (halo-fast): How are you? (real LLM response from Lemonade)
+  /metrics: 7 lines
 
-Testing TDAD (http://localhost:8402) ...
-  /health: {'status': 'ok', 'indexed': False}
-  /analyze: affected_tests=['tests/test_app.py'], confidence=1.0
-  /metrics (first line): # HELP halo_tdad_modules Total indexed modules
+Testing Supervisor API (http://localhost:9091) ...
+  /health: {'status': 'ok', 'paused': False, 'redis_connected': True}
+  /api/state: specs=1 devpods=0 paused=False
+    First spec: SPEC-001 — status=draft
+  /api/csrf-token: got token (abc123def456...)
+  /metrics: OK
 
 Testing Factory Floor (http://localhost:8888) ...
+  /health: {'status': 'ok', 'supervisor_url': 'http://localhost:9091'}
+  /api/state (proxied): specs=1 paused=False
+  /api/csrf-token (proxied): got token (abc123def456...)
+
+Testing TDAD (http://localhost:8402) ...
   /health: {'status': 'ok'}
-  /api/state: ['specs', 'devpods', 'model_metrics', 'logs', 'paused']
-  /api/csrf-token: got token (0sC0-lXQ9k39dByT...)
-  /metrics (first line): # HELP halo_factory_floor_up Service up
+  /index: modules=1 tests=1 edges=1
+  /analyze: affected_tests=['tests/test_app.py'] confidence=1.0
 
 Testing Agent-Bridge (http://localhost:19000) ...
   /health: {'status': 'ok'}
-  /api/files: 4 items at root
+  /api/files: 5 items at root
   /api/launchers: ['terminal', 'vscode', 'files', 'spec']
 
 ============================================================
 All smoke tests complete.
 ============================================================
+```
+
+### Step 6: Stop all services when done
+
+```bash
+python3 scripts/halo-test.py stop-all
 ```
 
 ---
@@ -287,7 +340,97 @@ halo_kernel_vram_limit_gb 60
 
 ---
 
-### 4.2 TDAD Service (:8402)
+### 4.2 Supervisor API (:9091)
+
+The Supervisor API (A9) is the single source of truth for all state and mutations.
+Factory Floor proxies all `/api/*` calls to it. It runs FastAPI on `:9091`.
+
+**Start**:
+```bash
+HALO_PROJECTS_DIR=/tmp/halo-test/projects \
+HALO_KERNEL_URL=http://localhost:13306 \
+HALO_SUPERVISOR_PORT=9091 \
+  python3 -m uvicorn halo.supervisor_api:app --host 0.0.0.0 --port 9091
+```
+
+> Or use `python3 scripts/halo-test.py start-supervisor`
+
+#### Test: Health check
+
+```bash
+curl -s http://localhost:9091/health | python3 -m json.tool
+```
+
+Expected:
+```json
+{
+    "status": "ok",
+    "paused": false,
+    "redis_connected": true,
+    "k3s_connected": false
+}
+```
+
+#### Test: State snapshot (reads real specs from Git)
+
+```bash
+curl -s http://localhost:9091/api/state | python3 -m json.tool
+```
+
+Expected (with demo spec created):
+```json
+{
+    "specs": [
+        {
+            "id": "SPEC-001",
+            "title": "Hello World FastAPI Endpoint",
+            "status": "draft",
+            "depends_on": [],
+            "blocks": [],
+            "tags": ["api", "fastapi", "tdd"],
+            "project": "demo"
+        }
+    ],
+    "devpods": [],
+    "model_metrics": {"queue_depth": 0, "tokens_per_sec": 0, "active_seqs": 0},
+    "logs": [],
+    "paused": false
+}
+```
+
+#### Test: CSRF token + trigger spec
+
+```bash
+# Get CSRF token
+TOKEN=$(curl -s http://localhost:9091/api/csrf-token | python3 -c "import sys,json; print(json.load(sys.stdin)['csrf_token'])")
+
+# Trigger spec (draft → ready)
+curl -s -X POST http://localhost:9091/api/trigger \
+  -H "Content-Type: application/json" \
+  -d "{\"spec_id\":\"SPEC-001\",\"csrf_token\":\"$TOKEN\"}" | python3 -m json.tool
+```
+
+Expected:
+```json
+{"status": "triggered", "spec_id": "SPEC-001"}
+```
+
+#### Test: SSE endpoint
+
+```bash
+curl -s http://localhost:9091/api/sse -N | head -5
+```
+
+Expected:
+```
+data: {"type": "connected"}
+
+data: {"type": "heartbeat"}
+```
+
+---
+
+### 4.3 TDAD Service (:8402)
 
 **Start**:
 ```bash
@@ -357,11 +500,16 @@ After indexing, expect `halo_tdad_modules 1`, `halo_tdad_tests 1`,
 
 ---
 
-### 4.3 Factory Floor (:8888)
+### 4.4 Factory Floor (:8888)
+
+> **Pass 2**: Factory Floor is now a **thin proxy** to the Supervisor API (:9091).
+> All `/api/*` requests are forwarded via `httpx`. Business logic lives in the Supervisor.
+> Start the Supervisor API **before** starting Factory Floor.
 
 **Start**:
 ```bash
-python3 -m uvicorn halo.factory_floor.app:app --host 0.0.0.0 --port 8888
+HALO_SUPERVISOR_URL=http://localhost:9091 \
+  python3 -m uvicorn halo.factory_floor.app:app --host 0.0.0.0 --port 8888
 ```
 
 #### Test: Health check
@@ -461,7 +609,7 @@ curl -s http://localhost:8888/metrics
 
 ---
 
-### 4.4 Agent-Bridge (:19000)
+### 4.5 Agent-Bridge (:19000)
 
 **Start** (point to the demo project):
 ```bash
@@ -523,7 +671,7 @@ See [§4.5](#45-nanoclaw-unix-socket) to start Nanoclaw.
 
 ---
 
-### 4.5 Nanoclaw Unix Socket
+### 4.6 Nanoclaw Unix Socket
 
 **Start** (requires HALO Kernel running on :13306):
 ```bash
