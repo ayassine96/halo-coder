@@ -1,11 +1,21 @@
 # Unit tests for halo-infra chart
 suite: halo-infra defaults
+templates:
+  - templates/redis.yaml
+  - templates/minio.yaml
+  - templates/qdrant.yaml
+  - templates/networkpolicy.yaml
 tests:
   - it: renders Redis Deployment with defaults
+    template: templates/redis.yaml
+    documentIndex: 0
     asserts:
-      - hasDocument:
-          kind: Deployment
-          name: halo-redis
+      - equal:
+          path: kind
+          value: Deployment
+      - equal:
+          path: metadata.name
+          value: halo-redis
       - equal:
           path: spec.replicas
           value: 1
@@ -13,38 +23,94 @@ tests:
           path: spec.template.spec.containers[0].image
           value: redis:7-alpine
 
-  - it: renders MinIO Deployment with defaults
+  - it: renders Redis PVC
+    template: templates/redis.yaml
+    documentIndex: 1
     asserts:
-      - hasDocument:
-          kind: Deployment
-          name: halo-minio
+      - equal:
+          path: kind
+          value: PersistentVolumeClaim
+      - equal:
+          path: metadata.name
+          value: halo-redis
+
+  - it: renders Redis Service
+    template: templates/redis.yaml
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: kind
+          value: Service
+      - equal:
+          path: metadata.name
+          value: halo-redis
+
+  - it: renders MinIO Deployment with defaults
+    template: templates/minio.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: kind
+          value: Deployment
+      - equal:
+          path: metadata.name
+          value: halo-minio
       - equal:
           path: spec.replicas
           value: 1
+
+  - it: renders MinIO PVC
+    template: templates/minio.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: kind
+          value: PersistentVolumeClaim
+
+  - it: renders MinIO Service
+    template: templates/minio.yaml
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: kind
+          value: Service
 
   - it: renders Qdrant Deployment with defaults
+    template: templates/qdrant.yaml
+    documentIndex: 0
     asserts:
-      - hasDocument:
-          kind: Deployment
-          name: halo-qdrant
+      - equal:
+          path: kind
+          value: Deployment
+      - equal:
+          path: metadata.name
+          value: halo-qdrant
       - equal:
           path: spec.replicas
           value: 1
 
-  - it: renders NetworkPolicy
+  - it: renders Qdrant PVC
+    template: templates/qdrant.yaml
+    documentIndex: 1
     asserts:
-      - hasDocument:
-          kind: NetworkPolicy
-          name: halo-infra-default-deny
+      - equal:
+          path: kind
+          value: PersistentVolumeClaim
 
-  - it: renders PVCs for all services
+  - it: renders Qdrant Service
+    template: templates/qdrant.yaml
+    documentIndex: 2
     asserts:
-      - hasDocument:
-          kind: PersistentVolumeClaim
-          name: halo-redis
-      - hasDocument:
-          kind: PersistentVolumeClaim
-          name: halo-minio
-      - hasDocument:
-          kind: PersistentVolumeClaim
-          name: halo-qdrant
+      - equal:
+          path: kind
+          value: Service
+
+  - it: renders NetworkPolicy
+    template: templates/networkpolicy.yaml
+    asserts:
+      - equal:
+          path: kind
+          value: NetworkPolicy
+      - equal:
+          path: metadata.name
+          value: halo-infra-default-deny
