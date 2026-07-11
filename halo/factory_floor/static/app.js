@@ -41,6 +41,7 @@ function renderAll(state) {
   paused = state.paused || false;
   document.getElementById('pause-btn').textContent = paused ? 'Resume' : 'Pause';
   if (state.specs) renderKanban(state.specs);
+  if (state.specs) renderGraph(state.specs);
   if (state.devpods) renderDevPods(state.devpods);
   if (state.model_metrics) renderModels(state.model_metrics);
 }
