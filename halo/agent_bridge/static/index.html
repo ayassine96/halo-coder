@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HALO Agent-Bridge</title>
+  <style>
+    body { background: #0d1117; color: #c9d1d9; margin: 0; font-family: monospace; }
+    .header { padding: 1rem; border-bottom: 1px solid #30363d; }
+    .container { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1rem; }
+    .panel { background: #161b22; border-radius: 6px; padding: 1rem; }
+    h2 { margin-top: 0; color: #58a6ff; }
+    pre { white-space: pre-wrap; }
+    #chat { height: 300px; overflow-y: auto; border: 1px solid #30363d; padding: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>HALO Agent-Bridge</h1>
+    <a href="/terminal">Terminal</a> | <a href="/vscode">VS Code</a> | <a href="/health">Health</a>
+  </div>
+  <div class="container">
+    <div class="panel">
+      <h2>Current Spec</h2>
+      <pre id="spec">Loading...</pre>
+    </div>
+    <div class="panel">
+      <h2>File Tree</h2>
+      <div id="files">Loading...</div>
+    </div>
+    <div class="panel" style="grid-column: 1 / -1">
+      <h2>Chat with Nanoclaw</h2>
+      <div id="chat"></div>
+      <input id="msg" type="text" placeholder="Send message..." style="width: 80%; padding: 0.5rem;">
+      <button onclick="sendMsg()" style="padding: 0.5rem;">Send</button>
+    </div>
+  </div>
+  <script>
+    fetch('/api/spec').then(r => r.json()).then(d => {
+      document.getElementById('spec').textContent = d.content || JSON.stringify(d);
+    });
+    fetch('/api/files').then(r => r.json()).then(d => {
+      document.getElementById('files').innerHTML = (d.items || []).map(i =>
+        `<div>${i.type === 'dir' ? '📁' : '📄'} ${i.name}</div>`).join('');
+    });
+    function sendMsg() {
+      const msg = document.getElementById('msg').value;
+      if (!msg) return;
+      fetch('/api/chat', { method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({message: msg}) }).then(r => r.json()).then(d => {
+        document.getElementById('chat').innerHTML += `<div>>> ${msg}</div><div>< ${d.response}</div>`;
+        document.getElementById('msg').value = '';
+      });
+    }
+  </script>
+</body>
+</html>
