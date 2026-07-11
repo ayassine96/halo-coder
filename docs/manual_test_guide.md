@@ -573,7 +573,7 @@ sock.sendall(json.dumps({'action': 'memory_append', 'entry': {'role': 'user', 'c
 print('Append:', sock.recv(4096).decode().strip())
 
 sock.sendall(json.dumps({'action': 'memory_read', 'count': 5}).encode() + b'\n')
-print('Read:', sock.recv(4092).decode().strip())
+print('Read:', sock.recv(4096).decode().strip())
 sock.close()
 "
 ```
@@ -967,12 +967,12 @@ python3 -m uvicorn halo.agent_bridge.app:app --port 19000
 
 | Service | Default Port | Alternative Port |
 |---------|-------------|-----------------|
-| HALO Kernel | 13305 | 13306 |
-| TDAD | 8402 | 18402 |
-| Factory Floor | 8888 | 18888 |
-| Agent-Bridge | 9000 | 19000 |
-| Nanoclaw | /tmp/nanoclaw.sock | — |
+| HALO Kernel | 13306 | 13305 (if Lemonade not running) |
+| Factory Floor | 8888 | — |
+| TDAD | 8402 | — |
+| Agent-Bridge | 19000 | 9000 |
+| Supervisor API | 9090 | — |
 | Redis | 6379 | — |
-| MinIO API | 9000 (conflicts!) | 19000 |
-| MinIO Console | 9020 | — |
+| MinIO | 9000 | — |
 | Qdrant | 6333 | — |
+| Lemonade (external) | 13305 | — |
