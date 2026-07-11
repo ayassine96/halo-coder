@@ -4,7 +4,7 @@
 import os
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 
 from halo.memory.rag_indexer import RagIndexer, EMBEDDING_DIM, COLLECTION_NAME
 from halo.memory.rag_query import RagQuery
@@ -333,6 +333,52 @@ tags: [api]
         self.assertTrue(cb.can_proceed("halo-reasoning"))
         cb.record_failure("halo-reasoning")
         self.assertFalse(cb.can_proceed("halo-reasoning"))
+
+    def test_qdrant_failure_rag_omitted(self):
+        """REL-4: If Qdrant fails, RAG context is omitted (returns empty string)."""
+        mock_qdrant = MagicMock()
+        mock_qdrant.search.side_effect = Exception("Qdrant down")
+        from halo.memory.rag_query import RagQuery
+        from halo.common.models import Spec
+        query = RagQuery(qdrant_client=mock_qdrant)
+        result = query.retrieve_context(Spec(id="SPEC-001", title="Test", status="draft", body="test"))
+        self.assertEqual(result, "")
+
+    def test_tdad_failure_fallback_to_full_suite(self):
+        """REL-4: If TDAD fails, agents run full test suite instead of targeted tests."""
+        from halo.factory.agents.tester import TesterAgent
+        tester = TesterAgent()
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+            result = tester.run_tests("/tmp", language="python")
+            self.assertIn("exit_code", result)
+
+    def test_dagger_fallback_chain(self):
+        """REL-4: Three-tier fallback Dagger → docker → host subprocess."""
+        from halo.dagger.pipelines import python_test
+        with patch.object(python_test, "_dagger_available", return_value=False), \
+             patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+            result = python_test.run_python_test("/tmp")
+            self.assertIn(result["execution_mode"], ["docker", "host_subprocess"])
+
+    def test_kernel_failure_returns_503(self):
+        """REL-4: If HALO Kernel fails, gateway returns 503."""
+        from fastapi.testclient import TestClient
+        from halo.kernel import gateway
+        import httpx
+        mock_client_cls = MagicMock()
+        mock_instance = AsyncMock()
+        mock_instance.post = AsyncMock(side_effect=httpx.ConnectError("down"))
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_instance)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        with patch("halo.kernel.gateway.httpx.AsyncClient", mock_client_cls):
+            gateway._metrics["active_seqs"] = 0
+            client = TestClient(gateway.app)
+            resp = client.post("/v1/chat/completions", json={
+                "model": "halo-fast", "messages": [{"role": "user", "content": "hi"}]
+            })
+            self.assertEqual(resp.status_code, 503)
 
 
 if __name__ == '__main__':

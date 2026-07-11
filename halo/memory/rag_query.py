@@ -5,10 +5,16 @@ Queries Qdrant for:
 - Similar past specs (title/AC vector similarity)
 - Related ADRs (tag overlap)
 - Past errors on similar files (path prefix)
+
+Graceful degradation: if Qdrant fails, context is omitted (REL-4).
 """
+
+import logging
 
 from halo.common.qdrant_client import QdrantClient
 from halo.memory.rag_indexer import RagIndexer, EMBEDDING_DIM
+
+_log = logging.getLogger("halo.rag.query")
 
 
 class RagQuery:
@@ -22,11 +28,15 @@ class RagQuery:
         """Retrieve RAG context for a spec (MEM-R4).
 
         Returns a formatted string of similar specs, ADRs, and past errors.
+        If Qdrant fails, returns empty string (REL-4 graceful degradation).
         """
-        query_text = f"{spec.title} {spec.body[:500]}"
-        query_vector = self._indexer._embed(query_text)
-
-        results = self.qdrant.search(query_vector, limit=limit, score_threshold=0.1)
+        try:
+            query_text = f"{spec.title} {spec.body[:500]}"
+            query_vector = self._indexer._embed(query_text)
+            results = self.qdrant.search(query_vector, limit=limit, score_threshold=0.1)
+        except Exception as e:
+            _log.warning(f"Context retrieval failed (Qdrant down): {e}")
+            return ""
 
         context_parts = []
         for hit in results:
