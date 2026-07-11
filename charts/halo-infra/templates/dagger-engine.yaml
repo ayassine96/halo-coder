@@ -1,0 +1,49 @@
+{{- if .Values.dagger.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: halo-dagger-engine
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: halo-dagger-engine
+    app.kubernetes.io/part-of: halo-infra
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: halo-dagger-engine
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: halo-dagger-engine
+    spec:
+      containers:
+        - name: dagger
+          image: {{ .Values.dagger.image }}
+          securityContext:
+            privileged: true
+          {{- with .Values.dagger.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            exec:
+              command: ["dagger", "query"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: halo-dagger-engine
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: halo-dagger-engine
+    app.kubernetes.io/part-of: halo-infra
+spec:
+  selector:
+    app.kubernetes.io/name: halo-dagger-engine
+  ports:
+    - port: 8080
+      targetPort: 8080
+{{- end }}
