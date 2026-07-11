@@ -1,0 +1,21 @@
+# Unit tests for halo-factory-floor chart
+suite: factory-floor defaults
+tests:
+  - it: renders Deployment with defaults
+    asserts:
+      - hasDocument:
+          kind: Deployment
+          name: halo-factory-floor
+      - equal:
+          path: spec.replicas
+          value: 1
+  - it: renders Service
+    asserts:
+      - hasDocument:
+          kind: Service
+          name: halo-factory-floor
+  - it: renders Ingress
+    asserts:
+      - hasDocument:
+          kind: Ingress
+          name: halo-factory-floor

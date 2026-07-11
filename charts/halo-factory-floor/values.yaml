@@ -1,0 +1,21 @@
+# HALO Factory Floor
+namespace: halo
+
+factoryFloor:
+  image: halo-factory-floor:2.0.0-halo
+  host: factory.halo.local
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+ingress:
+  className: nginx
+  auth:
+    type: basic
+
+redis:
+  url: "redis://halo-redis:6379"

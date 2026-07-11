@@ -1,0 +1,6 @@
+apiVersion: v2
+name: halo-factory-floor
+description: HALO Factory Floor — unified browser control surface
+type: application
+version: 0.2.0
+appVersion: "2.0.0-halo"

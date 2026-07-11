@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HALO Factory Floor</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  <header id="topbar">
+    <h1>HALO Factory Floor</h1>
+    <nav>
+      <button data-view="kanban" class="active">Kanban</button>
+      <button data-view="graph">Graph</button>
+      <button data-view="logs">Logs</button>
+      <button data-view="approvals">Approvals</button>
+      <button data-view="devpods">DevPods</button>
+      <button data-view="models">Models</button>
+    </nav>
+    <button id="pause-btn" class="danger">Pause</button>
+  </header>
+
+  <div id="command-palette" class="hidden">
+    <input type="text" id="cmd-input" placeholder="> spec SPEC-001 | > project demo | > logs | > pause">
+  </div>
+
+  <main id="content">
+    <section id="view-kanban" class="view active">
+      <div class="kanban-board" id="kanban"></div>
+    </section>
+    <section id="view-graph" class="view hidden">
+      <div id="graph-container"></div>
+    </section>
+    <section id="view-logs" class="view hidden">
+      <pre id="log-stream"></pre>
+    </section>
+    <section id="view-approvals" class="view hidden">
+      <div id="approval-queue"></div>
+    </section>
+    <section id="view-devpods" class="view hidden">
+      <div id="devpod-status"></div>
+    </section>
+    <section id="view-models" class="view hidden">
+      <div id="model-util"></div>
+    </section>
+  </main>
+
+  <script type="module" src="/static/app.js"></script>
+  <script type="module" src="/static/kanban.js"></script>
+  <script type="module" src="/static/logs.js"></script>
+  <script type="module" src="/static/approvals.js"></script>
+  <script type="module" src="/static/devpods.js"></script>
+  <script type="module" src="/static/models.js"></script>
+  <script type="module" src="/static/command-palette.js"></script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+/* HALO Factory Floor — dark mode styles (FF-R6, FF-R7) */
+:root {
+  --draft: #8b949e;
+  --ready: #3fb950;
+  --in_progress: #58a6ff;
+  --implemented: #a371f7;
+  --failed: #f85149;
+  --merged: #ffffff;
+  --bg: #0d1117;
+  --surface: #161b22;
+  --border: #30363d;
+  --text: #c9d1d9;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; }
+
+#topbar { display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+#topbar h1 { font-size: 1.1rem; }
+#topbar nav { display: flex; gap: 0.5rem; margin-left: auto; }
+#topbar nav button { background: none; color: var(--text); border: none; padding: 0.4rem 0.8rem; cursor: pointer; border-radius: 6px; }
+#topbar nav button.active { background: var(--surface); }
+#topbar nav button:hover { background: var(--surface); }
+#pause-btn { background: var(--failed); color: white; border: none; padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer; }
+
+.hidden { display: none !important; }
+
+#command-palette { position: fixed; top: 20%; left: 50%; transform: translateX(-50%); z-index: 100; }
+#command-palette input { width: 400px; padding: 0.75rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 8px; font-size: 1rem; }
+
+.kanban-board { display: flex; gap: 1rem; padding: 1rem; overflow-x: auto; }
+.kanban-col { min-width: 220px; flex: 1; }
+.kanban-col h3 { font-size: 0.85rem; text-transform: uppercase; margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+.kanban-card { background: var(--surface); border-left: 3px solid var(--border); border-radius: 6px; padding: 0.75rem; margin-bottom: 0.5rem; cursor: pointer; }
+.kanban-card:hover { filter: brightness(1.2); }
+.card-id { font-size: 0.75rem; opacity: 0.6; }
+.card-title { font-size: 0.9rem; margin-top: 0.25rem; }
+
+#log-stream { padding: 1rem; font-family: monospace; font-size: 0.85rem; max-height: 500px; overflow-y: auto; }
+
+.approval-card { background: var(--surface); border-radius: 8px; padding: 1rem; margin: 1rem; }
+.approval-card .approve-btn { background: var(--ready); color: black; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; margin-right: 0.5rem; }
+.approval-card .reject-btn { background: var(--failed); color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+
+.devpod-card { background: var(--surface); border-radius: 6px; padding: 1rem; margin: 0.5rem; }
+.pod-status.Running { color: var(--ready); }
+.pod-status.Pending { color: var(--in_progress); }
+.pod-status.Terminated { color: var(--failed); }
+
+.metric-card { background: var(--surface); border-radius: 8px; padding: 1rem; display: inline-block; margin: 0.5rem; }
+.metric-label { font-size: 0.8rem; opacity: 0.7; }
+.metric-value { font-size: 1.5rem; font-weight: bold; }
+
+@media (max-width: 768px) {
+  .kanban-board { flex-direction: column; }
+  #topbar nav { display: none; }
+}
