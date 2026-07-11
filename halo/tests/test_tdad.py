@@ -9,6 +9,7 @@ from unittest.mock import patch, MagicMock
 from halo.tdad.graph_store import GraphStore
 from halo.tdad.ast_builder import (
     parse_imports, parse_defs, is_test_file, build_graph, analyze_changed_files,
+    find_source_files, _get_language, _TREE_SITTER_AVAILABLE,
 )
 from halo.tdad.incremental import incremental_update, full_reindex
 
@@ -92,6 +93,68 @@ class TestAstBuilder(unittest.TestCase):
                 f.write("from src.auth import login\n\ndef test_login():\n    pass\n")
 
             store = GraphStore("/tmp/test-tdad-graph.json")
+            build_graph(repo, store)
+            self.assertGreater(store.module_count, 0)
+            self.assertGreater(store.test_count, 0)
+
+    def test_tree_sitter_available(self):
+        """tree-sitter should be installed in Pass 2."""
+        self.assertTrue(_TREE_SITTER_AVAILABLE, "tree-sitter not installed")
+
+    def test_parse_js_imports(self):
+        content = 'import { login } from "./auth";\nconst x = require("os");'
+        imports = parse_imports(content, "javascript")
+        self.assertTrue(any("auth" in i for i in imports))
+
+    def test_parse_js_defs(self):
+        content = "function handleSubmit() {}\nclass MyComponent {}\nconst handler = () => {}"
+        defs = parse_defs(content, "javascript")
+        self.assertIn("handleSubmit", defs)
+        self.assertIn("MyComponent", defs)
+
+    def test_parse_ts_imports(self):
+        content = 'import { login } from "./auth";'
+        imports = parse_imports(content, "typescript")
+        self.assertTrue(any("auth" in i for i in imports))
+
+    def test_is_test_file_js(self):
+        self.assertTrue(is_test_file("src/component.test.js"))
+        self.assertTrue(is_test_file("src/component.spec.ts"))
+        self.assertFalse(is_test_file("src/component.js"))
+
+    def test_get_language(self):
+        self.assertEqual(_get_language("foo.py"), "python")
+        self.assertEqual(_get_language("foo.js"), "javascript")
+        self.assertEqual(_get_language("foo.ts"), "typescript")
+        self.assertEqual(_get_language("foo.jsx"), "javascript")
+        self.assertEqual(_get_language("foo.tsx"), "typescript")
+        self.assertIsNone(_get_language("foo.md"))
+
+    def test_find_source_files(self):
+        with tempfile.TemporaryDirectory() as repo:
+            os.makedirs(os.path.join(repo, "src"))
+            os.makedirs(os.path.join(repo, "node_modules", "bad"))
+            with open(os.path.join(repo, "src", "app.py"), "w") as f:
+                f.write("pass")
+            with open(os.path.join(repo, "src", "app.js"), "w") as f:
+                f.write("pass")
+            with open(os.path.join(repo, "node_modules", "bad", "x.js"), "w") as f:
+                f.write("pass")
+            files = find_source_files(repo)
+            self.assertIn("src/app.py", files)
+            self.assertIn("src/app.js", files)
+            self.assertNotIn("node_modules/bad/x.js", files)
+
+    def test_build_graph_with_js(self):
+        with tempfile.TemporaryDirectory() as repo:
+            os.makedirs(os.path.join(repo, "src"))
+            os.makedirs(os.path.join(repo, "__tests__"))
+            with open(os.path.join(repo, "src", "auth.js"), "w") as f:
+                f.write("function login(user) { return user; }\n")
+            with open(os.path.join(repo, "__tests__", "auth.test.js"), "w") as f:
+                f.write('import { login } from "../src/auth";\n')
+
+            store = GraphStore("/tmp/test-tdad-js-graph.json")
             build_graph(repo, store)
             self.assertGreater(store.module_count, 0)
             self.assertGreater(store.test_count, 0)
