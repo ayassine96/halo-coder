@@ -20,10 +20,26 @@ from halo.common.models import Spec
 class TestRagIndexer(unittest.TestCase):
 
     def test_default_embedding(self):
+        """Embedding returns a vector of the right dimension."""
         indexer = RagIndexer()
         vec = indexer._embed("test text")
         self.assertEqual(len(vec), EMBEDDING_DIM)
-        self.assertTrue(all(0 <= v <= 1 for v in vec))
+
+    def test_hash_embedding(self):
+        """Hash fallback produces deterministic vectors in [0,1]."""
+        indexer = RagIndexer()
+        vec1 = indexer._hash_embedding("test text")
+        vec2 = indexer._hash_embedding("test text")
+        vec3 = indexer._hash_embedding("other text")
+        self.assertEqual(vec1, vec2)
+        self.assertNotEqual(vec1, vec3)
+        self.assertTrue(all(0 <= v <= 1 for v in vec1))
+
+    def test_sentence_transformers_available(self):
+        """sentence-transformers should be installed in Pass 2."""
+        from halo.memory.rag_indexer import _SENTENCE_TRANSFORMERS_AVAILABLE
+        self.assertTrue(_SENTENCE_TRANSFORMERS_AVAILABLE,
+                        "sentence-transformers not installed")
 
     def test_hash_id_stable(self):
         indexer = RagIndexer()

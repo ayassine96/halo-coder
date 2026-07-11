@@ -1,31 +1,71 @@
 #!/usr/bin/env python3
 """Qdrant RAG indexer — embed specs, ADRs, code into vector DB (MEM-R1..R3).
 
-Embedding model: BAAI/bge-large-en-v1.5 (dim=1024).
+Embedding model: BAAI/bge-large-en-v1.5 (dim=1024) via sentence-transformers.
 Rebuildable from Git: re-index all ARCH.md, specs/, src/ within 30 min (MEM-R3).
+Graceful degradation: if sentence-transformers not installed, use hash placeholder.
 """
 
 import os
 import hashlib
 import json
+import logging
+
 from halo.common.qdrant_client import QdrantClient
 
 EMBEDDING_DIM = 1024
 COLLECTION_NAME = "halo-rag"
+DEFAULT_MODEL = "BAAI/bge-large-en-v1.5"
+
+_SENTENCE_TRANSFORMERS_AVAILABLE = False
+try:
+    from sentence_transformers import SentenceTransformer
+    _SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    pass
 
 
 class RagIndexer:
     """Embed documents into Qdrant for vector search (MEM-R1, MEM-R3)."""
 
-    def __init__(self, qdrant_client=None, embedding_fn=None):
+    def __init__(self, qdrant_client=None, embedding_fn=None,
+                 embedding_model=DEFAULT_MODEL):
         self.qdrant = qdrant_client or QdrantClient(collection=COLLECTION_NAME)
         self._embed = embedding_fn or self._default_embedding
+        self._embedding_model_name = embedding_model
+        self._model = None
+        self._log = logging.getLogger("halo.rag")
+
+    def _get_model(self):
+        """Lazily load the sentence-transformers model (MEM-R2)."""
+        if self._model is None:
+            if not _SENTENCE_TRANSFORMERS_AVAILABLE:
+                self._log.warning(
+                    "sentence-transformers not installed, using hash placeholder embeddings"
+                )
+                return None
+            self._model = SentenceTransformer(self._embedding_model_name)
+        return self._model
+
+    def _real_embedding(self, text):
+        """Generate real embeddings using sentence-transformers (MEM-R2)."""
+        model = self._get_model()
+        if model is None:
+            return self._hash_embedding(text)
+        vec = model.encode(text, normalize_embeddings=True)
+        return vec.tolist()
 
     def _default_embedding(self, text):
-        """Default embedding: deterministic hash-based placeholder vector.
+        """Default embedding: real sentence-transformers or hash fallback (MEM-R2)."""
+        if _SENTENCE_TRANSFORMERS_AVAILABLE:
+            try:
+                return self._real_embedding(text)
+            except Exception as e:
+                self._log.warning(f"Embedding model failed, using hash: {e}")
+        return self._hash_embedding(text)
 
-        In production, replace with BAAI/bge-large-en-v1.5 or nomic-embed-text-v1.5.
-        """
+    def _hash_embedding(self, text):
+        """Fallback: deterministic hash-based placeholder vector (non-semantic)."""
         h = hashlib.sha256(text.encode()).digest()
         vec = [float(b) / 255.0 for b in h * (EMBEDDING_DIM // 32 + 1)]
         return vec[:EMBEDDING_DIM]
