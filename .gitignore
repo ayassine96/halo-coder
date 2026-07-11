@@ -56,3 +56,4 @@ halo/**/__pycache__/
 halo/**/*.pyc
 halo/.coverage
 halo/htmlcov/
+halo/projects/hello-world/
