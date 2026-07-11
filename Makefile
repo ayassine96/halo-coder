@@ -659,11 +659,9 @@ halo-coverage: ## Run HALO Python tests with coverage report
 	coverage run -m unittest discover -s halo/tests -p 'test_*.py' -v && coverage report && coverage html
 
 halo-helm-lint: ## Lint halo Helm charts
-	helm lint charts/halo-infra/
-	helm lint charts/halo-factory-floor/
+	helm lint charts/halo-infra/ charts/halo-factory-floor/
 
 halo-helm-test: ## Run Helm unit tests for halo charts
-	helm unittest charts/halo-infra/
-	helm unittest charts/halo-factory-floor/
+	helm unittest charts/halo-infra/ charts/halo-factory-floor/
 
 halo-test-all: halo-tests halo-helm-lint halo-helm-test ## Run all HALO tests (Python + Helm)
