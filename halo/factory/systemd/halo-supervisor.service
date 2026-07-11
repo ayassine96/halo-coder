@@ -1,15 +1,19 @@
 [Unit]
-Description=HALO Factory Supervisor — Event Loop
-After=network.target
+Description=HALO Factory Supervisor — Event Loop + HTTP API (:9090)
+After=network.target redis.service
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/python3 /opt/halo/factory/supervisor.py
 Restart=on-failure
+StartLimitIntervalSec=300
+StartLimitBurst=5
 RestartSec=5
 Environment=HALO_REDIS_URL=redis://localhost:6379
 Environment=HALO_K3S_API=http://localhost:6443
 Environment=HALO_PROJECTS_DIR=/var/halo/projects
+Environment=HALO_SUPERVISOR_PORT=9090
+Environment=HALO_KERNEL_URL=http://localhost:13306
 
 [Install]
 WantedBy=multi-user.target

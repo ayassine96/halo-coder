@@ -126,3 +126,23 @@ def validate_spec(spec):
     if not spec.id.startswith("SPEC-"):
         raise SpecValidationError(f"Spec id must start with 'SPEC-' in {spec.id}")
     return True
+
+
+def update_spec_status(file_path, new_status):
+    """Update the status field in a spec file's YAML frontmatter."""
+    with open(file_path, "r") as f:
+        content = f.read()
+    lines = content.split("\n")
+    in_frontmatter = False
+    updated = []
+    for line in lines:
+        if line.strip() == "---":
+            in_frontmatter = not in_frontmatter
+            updated.append(line)
+            continue
+        if in_frontmatter and line.strip().startswith("status:"):
+            updated.append(f"status: {new_status}")
+        else:
+            updated.append(line)
+    with open(file_path, "w") as f:
+        f.write("\n".join(updated))

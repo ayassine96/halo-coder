@@ -1,31 +1,27 @@
 #!/usr/bin/env python3
-"""Factory Floor — FastAPI backend (:8888) (FF-R1..FF-R7).
+"""Factory Floor — thin proxy to Supervisor API + static SPA (:8888) (A9, FF-R1..FF-P7).
 
-SSE relay, state snapshot, approval/trigger/reject/kill/pause endpoints.
-CSRF protection on all mutating endpoints (SEC-6).
+Pass 2: All /api/* requests are proxied to the Supervisor HTTP API (:9090).
+Factory Floor only serves static files (HTML/CSS/JS) and proxies API calls.
+Business logic lives in the Supervisor (single source of truth).
 """
 
-import json
 import os
-import secrets
+import json
 
-from fastapi import FastAPI, Request, Response, HTTPException, Depends
+import httpx
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-
-from halo.common.models import (
-    SPEC_STATUS_DRAFT, SPEC_STATUS_READY, SPEC_STATUS_IMPLEMENTED,
-    SPEC_STATUS_MERGED, CHANNEL_LOGS, CHANNEL_APPROVALS, CHANNEL_ALERTS, CHANNEL_METRICS,
-)
 
 
 app = FastAPI(title="HALO Factory Floor", version="2.0.0-halo")
 
+SUPERVISOR_URL = os.environ.get("HALO_SUPERVISOR_URL", "http://localhost:9090")
+
 _static_dir = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
-_csrf_tokens = set()
 
 @app.get("/")
 async def root():
@@ -33,116 +29,43 @@ async def root():
         return HTMLResponse(f.read())
 
 
-class ApproveRequest(BaseModel):
-    spec_id: str
-    acceptance_criteria: str = ""
-    csrf_token: str = ""
-
-
-class RejectRequest(BaseModel):
-    spec_id: str
-    reason: str = ""
-    csrf_token: str = ""
-
-
-class TriggerRequest(BaseModel):
-    spec_id: str
-    csrf_token: str = ""
-
-
-class KillRequest(BaseModel):
-    spec_id: str
-    csrf_token: str = ""
-
-
-class PauseRequest(BaseModel):
-    csrf_token: str = ""
-
-
-def verify_csrf(token: str):
-    """Verify CSRF token (SEC-6)."""
-    if not token or token not in _csrf_tokens:
-        raise HTTPException(status_code=403, detail="Invalid CSRF token")
-
-
-@app.get("/api/csrf-token")
-async def get_csrf_token():
-    """Get a CSRF token for future mutations (SEC-6)."""
-    token = secrets.token_urlsafe(32)
-    _csrf_tokens.add(token)
-    return {"csrf_token": token}
-
-
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "supervisor_url": SUPERVISOR_URL}
 
 
-@app.get("/api/state")
-async def get_state():
-    """Return full state snapshot (FF-R3)."""
-    return {
-        "specs": [],
-        "devpods": [],
-        "model_metrics": {"queue_depth": 0, "tokens_per_sec": 0, "active_seqs": 0},
-        "logs": [],
-        "paused": False,
-    }
+@app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_api(path: str, request: Request):
+    """Proxy all /api/* requests to Supervisor HTTP API (A9)."""
+    url = f"{SUPERVISOR_URL}/api/{path}"
+    headers = dict(request.headers)
+    headers.pop("host", None)
+    body = await request.body()
 
+    async with httpx.AsyncClient(timeout=60) as client:
+        try:
+            resp = await client.request(
+                request.method,
+                url,
+                content=body,
+                headers=headers,
+            )
+        except httpx.ConnectError:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Supervisor API unavailable", "supervisor_url": SUPERVISOR_URL},
+            )
 
-@app.get("/api/specs")
-async def list_specs():
-    """List all specs."""
-    return {"specs": []}
-
-
-@app.post("/api/approve")
-async def approve_spec(req: ApproveRequest):
-    """Transition implemented → merged (FF-R4, SEC-6)."""
-    verify_csrf(req.csrf_token)
-    _csrf_tokens.discard(req.csrf_token)
-    return {"status": "approved", "spec_id": req.spec_id}
-
-
-@app.post("/api/reject")
-async def reject_spec(req: RejectRequest):
-    """Transition implemented → draft (FF-R4, SEC-6)."""
-    verify_csrf(req.csrf_token)
-    _csrf_tokens.discard(req.csrf_token)
-    return {"status": "rejected", "spec_id": req.spec_id, "reason": req.reason}
-
-
-@app.post("/api/trigger")
-async def trigger_spec(req: TriggerRequest):
-    """Transition draft → ready (FF-R4, SEC-6)."""
-    verify_csrf(req.csrf_token)
-    _csrf_tokens.discard(req.csrf_token)
-    return {"status": "triggered", "spec_id": req.spec_id}
-
-
-@app.post("/api/kill")
-async def kill_spec(req: KillRequest):
-    """Force-terminate DevPod and mark as failed (FF-R4, SEC-6)."""
-    verify_csrf(req.csrf_token)
-    _csrf_tokens.discard(req.csrf_token)
-    return {"status": "killed", "spec_id": req.spec_id}
-
-
-@app.post("/api/pause")
-async def pause_supervisor(req: PauseRequest):
-    """Halt supervisor event loop — maintenance mode (FF-R4, SEC-6)."""
-    verify_csrf(req.csrf_token)
-    _csrf_tokens.discard(req.csrf_token)
-    return {"status": "paused"}
-
-
-@app.get("/api/sse")
-async def sse_stream():
-    """SSE endpoint streaming events from Redis Pub/Sub (FF-R3, FF-NF1)."""
-    async def generate():
-        yield f"data: {json.dumps({'type': 'connected'})}\n\n"
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    content_type = resp.headers.get("content-type", "")
+    if "text/event-stream" in content_type:
+        async def stream():
+            async for chunk in resp.aiter_bytes():
+                yield chunk
+        return StreamingResponse(stream(), media_type="text/event-stream")
+    elif "application/json" in content_type:
+        return JSONResponse(content=resp.json(), status_code=resp.status_code)
+    else:
+        return Response(content=resp.content, status_code=resp.status_code, media_type=content_type)
 
 
 @app.get("/metrics")
