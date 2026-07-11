@@ -1,0 +1,14 @@
+{{- if .Values.halo.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "workspace.fullname" . }}-halo-config
+  labels:
+    {{- include "workspace.labels" . | nindent 4 }}
+data:
+  HALO_KERNEL_URL: {{ .Values.halo.kernel.url | quote }}
+  HALO_SUPERVISOR_URL: {{ .Values.halo.supervisor.url | quote }}
+  HALO_NANOCLAW_SOCK: {{ .Values.halo.nanoclaw.sockPath | quote }}
+  HALO_PROJECT_DIR: {{ .Values.halo.projects.path | quote }}
+  HALO_AGENT_BRIDGE_PORT: {{ .Values.halo.agentBridge.port | quote }}
+{{- end }}

@@ -363,3 +363,25 @@ github:
     installationId: ""
     privateKey: ""
     existingSecretName: ""
+# HALO Factory extensions (Pass 2, A9).
+# When halo.enabled is true, the workspace pod gets an Agent-Bridge sidecar
+# and HALO volume mounts. When false (default), nothing changes — backward compatible.
+halo:
+  enabled: false
+  agentBridge:
+    image: halo/agent-bridge:2.0.0-halo
+    port: 9000
+  nanoclaw:
+    sockPath: /tmp/nanoclaw.sock
+  kernel:
+    url: http://halo-kernel.halo.svc:13306
+  supervisor:
+    url: http://halo-supervisor.halo.svc:9090
+  projects:
+    path: /var/halo/projects
+    readOnly: true
+  reference:
+    path: /var/halo/reference
+    readOnly: true
+  chat:
+    path: /var/halo/chat

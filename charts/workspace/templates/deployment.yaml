@@ -371,6 +371,39 @@ spec:
             cpu: 200m
             memory: 256Mi
       {{- end }}
+      {{- if .Values.halo.enabled }}
+      # HALO Agent-Bridge sidecar (A9, DP-R7)
+      - name: agent-bridge
+        image: {{ .Values.halo.agentBridge.image | quote }}
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: {{ .Values.halo.agentBridge.port }}
+          name: halo-bridge
+        env:
+        - name: HALO_KERNEL_URL
+          value: {{ .Values.halo.kernel.url | quote }}
+        - name: HALO_NANOCLAW_SOCK
+          value: {{ .Values.halo.nanoclaw.sockPath | quote }}
+        - name: HALO_PROJECT_DIR
+          value: {{ .Values.halo.projects.path | quote }}
+        - name: HALO_AGENT_BRIDGE_PORT
+          value: {{ .Values.halo.agentBridge.port | quote }}
+        volumeMounts:
+        - name: halo-projects
+          mountPath: {{ .Values.halo.projects.path }}
+          readOnly: {{ .Values.halo.projects.readOnly }}
+        - name: halo-chat
+          mountPath: {{ .Values.halo.chat.path }}
+        - name: nanoclaw-sock
+          mountPath: /tmp
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+      {{- end }}
       volumes:
       - name: home
         persistentVolumeClaim:
@@ -424,4 +457,14 @@ spec:
         secret:
           secretName: ssh-authorized-keys-{{ .Values.user.name }}
           defaultMode: 0444
+      {{- end }}
+      {{- if .Values.halo.enabled }}
+      # HALO volumes (DP-R6)
+      - name: halo-projects
+        persistentVolumeClaim:
+          claimName: halo-projects
+      - name: halo-chat
+        emptyDir: {}
+      - name: nanoclaw-sock
+        emptyDir: {}
       {{- end }}
